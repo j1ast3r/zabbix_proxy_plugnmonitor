@@ -1,0 +1,41 @@
+# Active Directory Integration Configuration
+
+active_directory:
+  enabled: true
+
+  # AD Server settings
+  server: dc01.example.com
+  port: 389
+  use_ssl: false  # Set to true for LDAPS (port 636)
+
+  # Service account credentials
+  bind_dn: "CN=ZabbixService,OU=ServiceAccounts,DC=example,DC=com"
+  bind_password: "YourSecurePassword"
+
+  # Search base
+  base_dn: "OU=Computers,DC=example,DC=com"
+
+  # LDAP search filter
+  # Default: all computers
+  search_filter: "(objectClass=computer)"
+
+  # Filter only enabled computers
+  # search_filter: "(&(objectClass=computer)(!(userAccountControl:1.2.840.113556.1.4.803:=2)))"
+
+  # Filter specific OU
+  # search_filter: "(&(objectClass=computer)(distinguishedName=*,OU=Servers,*))"
+
+  # Sync settings
+  sync_interval: 3600  # seconds (1 hour)
+  auto_import: true
+
+  # Cleanup inactive hosts
+  remove_inactive: false
+  inactive_days: 90
+
+zabbix:
+  server: 192.168.1.10
+  api_url: http://192.168.1.10/api_jsonrpc.php
+  api_user: Admin
+  api_password: zabbix
+  proxy_name: PlugMonitor-Proxy-RPI001

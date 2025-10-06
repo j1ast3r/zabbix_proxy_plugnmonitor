@@ -1,0 +1,84 @@
+# Zabbix Agent Configuration Template for Windows
+# Version: 7.0 LTS
+# Plug & Monitor
+
+# Zabbix Server or Proxy IP
+Server=192.168.1.100
+
+# Active checks
+ServerActive=192.168.1.100
+
+# Hostname (must be unique)
+# Use %COMPUTERNAME% or specific name
+Hostname=%COMPUTERNAME%
+
+# Listen port
+ListenPort=10050
+
+# Listen IP (0.0.0.0 = all interfaces)
+ListenIP=0.0.0.0
+
+# Paths
+LogFile=C:\Program Files\Zabbix Agent\zabbix_agentd.log
+LogFileSize=10
+
+# Process name
+PidFile=C:\Program Files\Zabbix Agent\zabbix_agentd.pid
+
+# Log level (0-5)
+# 0=no logging, 3=warnings, 4=debug
+DebugLevel=3
+
+# Timeout for agent operations
+Timeout=10
+
+# Include additional config files
+# Include=C:\Program Files\Zabbix Agent\zabbix_agentd.conf.d\*.conf
+
+# ENCRYPTION (PSK)
+# Enable if using PSK encryption
+
+# TLSConnect=psk
+# TLSAccept=psk
+# TLSPSKIdentity=PSK-%COMPUTERNAME%
+# TLSPSKFile=C:\ProgramData\zabbix\zabbix_agentd.psk
+
+# ACTIVE CHECKS
+# Refresh active checks configuration every N seconds
+RefreshActiveChecks=120
+
+# Buffer for active checks
+BufferSend=5
+BufferSize=100
+
+# USER PARAMETERS
+# Custom monitoring items
+
+# Monitor specific Windows service
+# UserParameter=service.state[*],powershell -NoProfile -Command "if((Get-Service '$1' -ErrorAction SilentlyContinue).Status -eq 'Running'){1}else{0}"
+
+# Monitor IIS if installed
+# UserParameter=iis.apppool[*],powershell -NoProfile -Command "Import-Module WebAdministration; (Get-WebAppPoolState '$1').Value"
+
+# Monitor CPU temperature (requires admin)
+# UserParameter=cpu.temp,powershell -NoProfile -Command "Get-WmiObject MSAcpi_ThermalZoneTemperature -Namespace root/wmi | Select-Object -ExpandProperty CurrentTemperature | ForEach-Object {($_ / 10) - 273.15}"
+
+# PERFORMANCE
+StartAgents=3
+
+# SAFETY
+AllowRoot=0
+UnsafeUserParameters=0
+
+# METADATA
+# Can be used for automatic template linking
+# HostMetadata=windows server
+# HostMetadataItem=system.uname
+
+# WINDOWS SPECIFIC
+# Enable performance counter monitoring
+EnableRemoteCommands=0
+LogRemoteCommands=0
+
+# Allow key patterns
+# AllowKey=system.run[*]

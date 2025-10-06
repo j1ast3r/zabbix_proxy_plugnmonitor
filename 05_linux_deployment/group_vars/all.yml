@@ -1,0 +1,53 @@
+---
+# Global variables for all hosts
+# Zabbix Agent deployment configuration
+
+# Zabbix version
+zabbix_version: "7.0"
+
+# Zabbix Server/Proxy configuration
+# Change this to your Zabbix Server or Proxy IP
+zabbix_agent_server: "192.168.1.100"
+zabbix_agent_serveractive: "192.168.1.100"
+
+# Agent configuration
+zabbix_agent_port: 10050
+zabbix_agent_hostname: "{{ ansible_hostname }}"
+
+# Use FQDN instead of hostname
+# zabbix_agent_hostname: "{{ ansible_fqdn }}"
+
+# PSK Encryption
+enable_psk: true
+psk_identity: "PSK-{{ ansible_hostname }}"
+psk_key_path: "/etc/zabbix/zabbix_agentd.psk"
+
+# Agent settings
+zabbix_agent_timeout: 10
+zabbix_agent_include_dir: "/etc/zabbix/zabbix_agent2.d"
+
+# Logging
+zabbix_agent_logfile: "/var/log/zabbix/zabbix_agent2.log"
+zabbix_agent_logfilesize: 10
+zabbix_agent_debuglevel: 3
+
+# Buffer settings
+zabbix_agent_buffer_send: 5
+zabbix_agent_buffer_size: 100
+
+# Active checks
+zabbix_agent_refresh_active_checks: 120
+
+# Allow remote commands (0=disabled, 1=enabled)
+# Security: Keep disabled unless required
+zabbix_agent_allow_remote_commands: 0
+
+# User parameters directory
+zabbix_agent_user_parameters_dir: "/etc/zabbix/zabbix_agent2.d"
+
+# Firewall configuration
+configure_firewall: true
+
+# Service configuration
+zabbix_agent_service_enabled: true
+zabbix_agent_service_state: started

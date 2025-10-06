@@ -1,0 +1,235 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<zabbix_export>
+    <version>7.0</version>
+    <template_groups>
+        <template_group>
+            <n>Templates/Operating systems</n>
+        </template_group>
+    </template_groups>
+    <templates>
+        <template>
+            <template>PlugMonitor Windows Template</template>
+            <n>PlugMonitor Windows Template</n>
+            <description>Custom Windows monitoring template for Plug &amp; Monitor</description>
+            <groups>
+                <group>
+                    <n>Templates/Operating systems</n>
+                </group>
+            </groups>
+            <items>
+                <!-- CPU -->
+                <item>
+                    <n>CPU utilization</n>
+                    <key>system.cpu.util</key>
+                    <delay>1m</delay>
+                    <units>%</units>
+                </item>
+
+                <!-- Memory -->
+                <item>
+                    <n>Memory utilization</n>
+                    <key>vm.memory.util</key>
+                    <delay>1m</delay>
+                    <units>%</units>
+                </item>
+                <item>
+                    <n>Available memory</n>
+                    <key>vm.memory.size[available]</key>
+                    <delay>1m</delay>
+                    <units>B</units>
+                </item>
+                <item>
+                    <n>Total memory</n>
+                    <key>vm.memory.size[total]</key>
+                    <delay>1h</delay>
+                    <units>B</units>
+                </item>
+
+                <!-- Disk C: -->
+                <item>
+                    <n>C: disk space utilization</n>
+                    <key>vfs.fs.size[C:,pused]</key>
+                    <delay>5m</delay>
+                    <units>%</units>
+                </item>
+                <item>
+                    <n>C: free disk space</n>
+                    <key>vfs.fs.size[C:,free]</key>
+                    <delay>5m</delay>
+                    <units>B</units>
+                </item>
+                <item>
+                    <n>C: total disk space</n>
+                    <key>vfs.fs.size[C:,total]</key>
+                    <delay>1h</delay>
+                    <units>B</units>
+                </item>
+
+                <!-- Network -->
+                <item>
+                    <n>Network incoming traffic</n>
+                    <key>net.if.in</key>
+                    <delay>1m</delay>
+                    <units>bps</units>
+                    <preprocessing>
+                        <step>
+                            <type>CHANGE_PER_SECOND</type>
+                        </step>
+                        <step>
+                            <type>MULTIPLIER</type>
+                            <params>8</params>
+                        </step>
+                    </preprocessing>
+                </item>
+                <item>
+                    <n>Network outgoing traffic</n>
+                    <key>net.if.out</key>
+                    <delay>1m</delay>
+                    <units>bps</units>
+                    <preprocessing>
+                        <step>
+                            <type>CHANGE_PER_SECOND</type>
+                        </step>
+                        <step>
+                            <type>MULTIPLIER</type>
+                            <params>8</params>
+                        </step>
+                    </preprocessing>
+                </item>
+
+                <!-- Services -->
+                <item>
+                    <n>Windows Update service state</n>
+                    <key>service_state[wuauserv]</key>
+                    <delay>5m</delay>
+                    <description>0=stopped, 1=running</description>
+                </item>
+
+                <!-- System -->
+                <item>
+                    <n>System uptime</n>
+                    <key>system.uptime</key>
+                    <delay>10m</delay>
+                    <units>uptime</units>
+                </item>
+                <item>
+                    <n>Number of processes</n>
+                    <key>proc.num[]</key>
+                    <delay>1m</delay>
+                </item>
+                <item>
+                    <n>System name</n>
+                    <key>system.hostname</key>
+                    <delay>1h</delay>
+                </item>
+                <item>
+                    <n>Operating system</n>
+                    <key>system.sw.os</key>
+                    <delay>1d</delay>
+                </item>
+                <item>
+                    <n>Agent ping</n>
+                    <key>agent.ping</key>
+                    <delay>1m</delay>
+                </item>
+                <item>
+                    <n>Agent version</n>
+                    <key>agent.version</key>
+                    <delay>1h</delay>
+                </item>
+            </items>
+
+            <triggers>
+                <trigger>
+                    <expression>last(/PlugMonitor Windows Template/system.cpu.util)&gt;90</expression>
+                    <n>High CPU utilization on {HOST.NAME}</n>
+                    <priority>WARNING</priority>
+                </trigger>
+                <trigger>
+                    <expression>last(/PlugMonitor Windows Template/vm.memory.util)&gt;90</expression>
+                    <n>High memory utilization on {HOST.NAME}</n>
+                    <priority>WARNING</priority>
+                </trigger>
+                <trigger>
+                    <expression>last(/PlugMonitor Windows Template/vfs.fs.size[C:,pused])&gt;90</expression>
+                    <n>C: drive is running out of space on {HOST.NAME}</n>
+                    <priority>WARNING</priority>
+                </trigger>
+                <trigger>
+                    <expression>last(/PlugMonitor Windows Template/vfs.fs.size[C:,pused])&gt;95</expression>
+                    <n>C: drive is critically low on {HOST.NAME}</n>
+                    <priority>HIGH</priority>
+                </trigger>
+                <trigger>
+                    <expression>last(/PlugMonitor Windows Template/agent.ping)=0</expression>
+                    <n>{HOST.NAME} is unreachable</n>
+                    <priority>HIGH</priority>
+                </trigger>
+                <trigger>
+                    <expression>last(/PlugMonitor Windows Template/system.uptime)&lt;600</expression>
+                    <n>{HOST.NAME} has been restarted</n>
+                    <priority>INFO</priority>
+                    <manual_close>YES</manual_close>
+                </trigger>
+            </triggers>
+
+            <graphs>
+                <graph>
+                    <n>CPU utilization</n>
+                    <graph_items>
+                        <graph_item>
+                            <color>1A7C11</color>
+                            <item>
+                                <host>PlugMonitor Windows Template</host>
+                                <key>system.cpu.util</key>
+                            </item>
+                        </graph_item>
+                    </graph_items>
+                </graph>
+                <graph>
+                    <n>Memory utilization</n>
+                    <graph_items>
+                        <graph_item>
+                            <color>C80000</color>
+                            <item>
+                                <host>PlugMonitor Windows Template</host>
+                                <key>vm.memory.util</key>
+                            </item>
+                        </graph_item>
+                    </graph_items>
+                </graph>
+                <graph>
+                    <n>Network traffic</n>
+                    <graph_items>
+                        <graph_item>
+                            <color>00AA00</color>
+                            <item>
+                                <host>PlugMonitor Windows Template</host>
+                                <key>net.if.in</key>
+                            </item>
+                        </graph_item>
+                        <graph_item>
+                            <color>3333FF</color>
+                            <item>
+                                <host>PlugMonitor Windows Template</host>
+                                <key>net.if.out</key>
+                            </item>
+                        </graph_item>
+                    </graph_items>
+                </graph>
+                <graph>
+                    <n>Disk space on C:</n>
+                    <graph_items>
+                        <graph_item>
+                            <color>FF0000</color>
+                            <item>
+                                <host>PlugMonitor Windows Template</host>
+                                <key>vfs.fs.size[C:,pused]</key>
+                            </item>
+                        </graph_item>
+                    </graph_items>
+                </graph>
+            </graphs>
+        </template>
+    </templates>
+</zabbix_export>

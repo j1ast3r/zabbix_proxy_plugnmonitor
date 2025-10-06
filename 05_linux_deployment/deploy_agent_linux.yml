@@ -1,0 +1,279 @@
+---
+# Ansible Playbook for Zabbix Agent Deployment on Linux
+# Plug & Monitor - Linux Agent Installation
+# Supports: Ubuntu, Debian, CentOS, RHEL, Rocky Linux
+
+- name: Deploy Zabbix Agent to Linux hosts
+  hosts: all
+  become: yes
+  gather_facts: yes
+
+  vars:
+    zabbix_version: "7.0"
+    zabbix_agent_server: "192.168.1.100"
+    zabbix_agent_serveractive: "192.168.1.100"
+    zabbix_agent_hostname: "{{ ansible_hostname }}"
+    zabbix_agent_port: 10050
+    enable_psk: true
+    psk_identity: "PSK-{{ ansible_hostname }}"
+    psk_key_path: "/etc/zabbix/zabbix_agentd.psk"
+
+  tasks:
+    - name: Display target host information
+      debug:
+        msg: "Deploying to {{ ansible_hostname }} ({{ ansible_distribution }} {{ ansible_distribution_version }})"
+
+    # Ubuntu/Debian installation
+    - name: Install Zabbix repository (Debian/Ubuntu)
+      when: ansible_os_family == "Debian"
+      block:
+        - name: Download Zabbix repository package (Ubuntu)
+          get_url:
+            url: "https://repo.zabbix.com/zabbix/{{ zabbix_version }}/ubuntu/pool/main/z/zabbix-release/zabbix-release_{{ zabbix_version }}-2+ubuntu{{ ansible_distribution_version }}_all.deb"
+            dest: /tmp/zabbix-release.deb
+          when: ansible_distribution == "Ubuntu"
+
+        - name: Download Zabbix repository package (Debian)
+          get_url:
+            url: "https://repo.zabbix.com/zabbix/{{ zabbix_version }}/debian/pool/main/z/zabbix-release/zabbix-release_{{ zabbix_version }}-2+debian{{ ansible_distribution_major_version }}_all.deb"
+            dest: /tmp/zabbix-release.deb
+          when: ansible_distribution == "Debian"
+
+        - name: Install Zabbix repository
+          apt:
+            deb: /tmp/zabbix-release.deb
+            state: present
+
+        - name: Update apt cache
+          apt:
+            update_cache: yes
+
+        - name: Install Zabbix Agent
+          apt:
+            name: zabbix-agent2
+            state: present
+
+    # CentOS/RHEL/Rocky installation
+    - name: Install Zabbix repository (RedHat family)
+      when: ansible_os_family == "RedHat"
+      block:
+        - name: Install Zabbix repository
+          yum:
+            name: "https://repo.zabbix.com/zabbix/{{ zabbix_version }}/rhel/{{ ansible_distribution_major_version }}/x86_64/zabbix-release-{{ zabbix_version }}-2.el{{ ansible_distribution_major_version }}.noarch.rpm"
+            state: present
+            disable_gpg_check: yes
+
+        - name: Clean yum cache
+          command: yum clean all
+          args:
+            warn: false
+
+        - name: Install Zabbix Agent
+          yum:
+            name: zabbix-agent2
+            state: present
+
+    # Generate PSK key
+    - name: Generate PSK key
+      when: enable_psk
+      block:
+        - name: Generate random PSK key
+          shell: openssl rand -hex 32
+          register: psk_key_generated
+          changed_when: false
+
+        - name: Save PSK key to file
+          copy:
+            content: "{{ psk_key_generated.stdout }}"
+            dest: "{{ psk_key_path }}"
+            owner: zabbix
+            group: zabbix
+            mode: '0600'
+
+        - name: Save PSK key to local file
+          local_action:
+            module: copy
+            content: |
+              Hostname: {{ ansible_hostname }}
+              PSK Identity: {{ psk_identity }}
+              PSK Key: {{ psk_key_generated.stdout }}
+            dest: "./psk_keys/{{ ansible_hostname }}.txt"
+          become: no
+
+        - name: Display PSK information
+          debug:
+            msg:
+              - "PSK Identity: {{ psk_identity }}"
+              - "PSK Key saved to: {{ psk_key_path }}"
+
+    # Configure agent
+    - name: Backup original configuration
+      copy:
+        src: /etc/zabbix/zabbix_agent2.conf
+        dest: /etc/zabbix/zabbix_agent2.conf.backup
+        remote_src: yes
+        force: no
+
+    - name: Configure Zabbix Agent - Server
+      lineinfile:
+        path: /etc/zabbix/zabbix_agent2.conf
+        regexp: '^Server='
+        line: "Server={{ zabbix_agent_server }}"
+        state: present
+
+    - name: Configure Zabbix Agent - ServerActive
+      lineinfile:
+        path: /etc/zabbix/zabbix_agent2.conf
+        regexp: '^ServerActive='
+        line: "ServerActive={{ zabbix_agent_serveractive }}"
+        state: present
+
+    - name: Configure Zabbix Agent - Hostname
+      lineinfile:
+        path: /etc/zabbix/zabbix_agent2.conf
+        regexp: '^Hostname='
+        line: "Hostname={{ zabbix_agent_hostname }}"
+        state: present
+
+    - name: Configure Zabbix Agent - ListenPort
+      lineinfile:
+        path: /etc/zabbix/zabbix_agent2.conf
+        regexp: '^# ?ListenPort='
+        line: "ListenPort={{ zabbix_agent_port }}"
+        state: present
+
+    # PSK encryption configuration
+    - name: Configure PSK encryption
+      when: enable_psk
+      block:
+        - name: Set TLSConnect to psk
+          lineinfile:
+            path: /etc/zabbix/zabbix_agent2.conf
+            regexp: '^# ?TLSConnect='
+            line: "TLSConnect=psk"
+            state: present
+
+        - name: Set TLSAccept to psk
+          lineinfile:
+            path: /etc/zabbix/zabbix_agent2.conf
+            regexp: '^# ?TLSAccept='
+            line: "TLSAccept=psk"
+            state: present
+
+        - name: Set TLSPSKIdentity
+          lineinfile:
+            path: /etc/zabbix/zabbix_agent2.conf
+            regexp: '^# ?TLSPSKIdentity='
+            line: "TLSPSKIdentity={{ psk_identity }}"
+            state: present
+
+        - name: Set TLSPSKFile
+          lineinfile:
+            path: /etc/zabbix/zabbix_agent2.conf
+            regexp: '^# ?TLSPSKFile='
+            line: "TLSPSKFile={{ psk_key_path }}"
+            state: present
+
+    # Firewall configuration
+    - name: Configure firewall (firewalld)
+      when: ansible_os_family == "RedHat"
+      block:
+        - name: Check if firewalld is running
+          systemd:
+            name: firewalld
+            state: started
+          register: firewalld_status
+          ignore_errors: yes
+
+        - name: Open Zabbix Agent port in firewalld
+          firewalld:
+            port: "{{ zabbix_agent_port }}/tcp"
+            permanent: yes
+            state: enabled
+            immediate: yes
+          when: firewalld_status is succeeded
+
+    - name: Configure firewall (ufw)
+      when: ansible_os_family == "Debian"
+      block:
+        - name: Check if ufw is active
+          command: ufw status
+          register: ufw_status
+          changed_when: false
+          ignore_errors: yes
+
+        - name: Allow Zabbix Agent port in ufw
+          ufw:
+            rule: allow
+            port: "{{ zabbix_agent_port }}"
+            proto: tcp
+          when: "'Status: active' in ufw_status.stdout"
+
+    # Start and enable service
+    - name: Enable and start Zabbix Agent service
+      systemd:
+        name: zabbix-agent2
+        state: restarted
+        enabled: yes
+        daemon_reload: yes
+
+    - name: Wait for agent to start
+      wait_for:
+        port: "{{ zabbix_agent_port }}"
+        delay: 2
+        timeout: 30
+
+    - name: Check agent status
+      systemd:
+        name: zabbix-agent2
+      register: agent_status
+
+    - name: Display agent status
+      debug:
+        msg: "Zabbix Agent status: {{ agent_status.status.ActiveState }}"
+
+    # Verification
+    - name: Test agent connectivity
+      wait_for:
+        host: "{{ ansible_default_ipv4.address }}"
+        port: "{{ zabbix_agent_port }}"
+        state: started
+        timeout: 10
+      delegate_to: localhost
+      become: no
+
+    - name: Installation summary
+      debug:
+        msg:
+          - "===== Installation Complete ====="
+          - "Host: {{ ansible_hostname }}"
+          - "IP: {{ ansible_default_ipv4.address }}"
+          - "Server: {{ zabbix_agent_server }}"
+          - "Port: {{ zabbix_agent_port }}"
+          - "PSK Enabled: {{ enable_psk }}"
+          - "Agent Status: {{ agent_status.status.ActiveState }}"
+
+# Post-installation tasks
+- name: Generate deployment report
+  hosts: localhost
+  gather_facts: no
+  tasks:
+    - name: Create report directory
+      file:
+        path: ./reports
+        state: directory
+
+    - name: Generate deployment report
+      copy:
+        content: |
+          Zabbix Agent Deployment Report
+          ==============================
+          Date: {{ ansible_date_time.iso8601 }}
+          
+          Deployed to {{ groups['all'] | length }} hosts
+          
+          Hosts:
+          {% for host in groups['all'] %}
+          - {{ host }}
+          {% endfor %}
+        dest: "./reports/deployment_{{ ansible_date_time.date }}_{{ ansible_date_time.time | replace(':', '') }}.txt"

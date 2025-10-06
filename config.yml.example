@@ -1,0 +1,232 @@
+# Plug & Monitor - Auto-Discovery Configuration Example
+
+# Zabbix Server Configuration
+zabbix:
+  # Zabbix Server IP or hostname
+  server: 192.168.1.10
+  server_port: 10051
+
+  # Zabbix API URL (JSON-RPC endpoint)
+  api_url: http://192.168.1.10/api_jsonrpc.php
+
+  # API credentials
+  api_user: Admin
+  api_password: zabbix
+
+  # Proxy name (must match proxy configured in Zabbix frontend)
+  proxy_name: PlugMonitor-Proxy-RPI001
+
+# Network Scanning Configuration
+network:
+  # Network range to scan (CIDR notation)
+  scan_range: 192.168.1.0/24
+
+  # Scan interval in seconds (3600 = 1 hour)
+  scan_interval: 3600
+
+  # Nmap options
+  # -sn: Ping scan (no port scan)
+  # -T4: Aggressive timing
+  nmap_options: "-sn -T4"
+
+  # IPs to exclude from scanning
+  exclude_ips:
+    - 192.168.1.1    # Router
+    - 192.168.1.10   # Zabbix Server
+    - 192.168.1.100  # This Raspberry Pi
+
+# Discovery Configuration
+discovery:
+  # Enable automatic host creation
+  enabled: true
+
+  # Automatically add discovered hosts to Zabbix
+  auto_add_hosts: true
+
+  # Automatically apply templates based on device type
+  auto_apply_templates: true
+
+  # Default host groups for discovered hosts
+  default_groups:
+    - "Discovered hosts"
+    - "PlugMonitor"
+    - "Network/LAN"
+
+  # Check interval for new scan results (seconds)
+  check_interval: 60
+
+  # Template mapping rules
+  # Maps device types and OS to Zabbix templates
+  template_mapping:
+    windows:
+      - "Windows by Zabbix agent active"
+      - "Windows services"
+
+    linux:
+      - "Linux by Zabbix agent active"
+      - "Linux filesystems"
+
+    macos:
+      - "macOS by Zabbix agent active"
+
+    network_device:
+      - "Generic SNMP"
+      - "Network interfaces SNMP"
+
+    printer:
+      - "Generic SNMP"
+      - "Printer SNMP"
+
+    server:
+      - "Linux by Zabbix agent active"
+
+    workstation:
+      - "ICMP Ping"
+
+    iot:
+      - "ICMP Ping"
+
+    unknown:
+      - "ICMP Ping"
+
+  # Host group mapping by device type
+  group_mapping:
+    server: ["Servers", "Linux servers"]
+    workstation: ["Workstations"]
+    network_device: ["Network devices"]
+    printer: ["Printers"]
+    iot: ["IoT devices"]
+
+  # Interface configuration
+  interface:
+    type: 1              # 1=Agent, 2=SNMP, 3=IPMI, 4=JMX
+    port: 10050          # Zabbix agent port
+    useip: 1             # Use IP address
+    dns: ""              # DNS name (empty if using IP)
+
+  # Inventory settings
+  inventory:
+    mode: 0              # 0=Manual, 1=Automatic
+    populate: true       # Auto-populate from scan data
+
+# Dashboard Configuration
+dashboard:
+  # Listen address (0.0.0.0 = all interfaces)
+  host: 0.0.0.0
+
+  # Web interface port
+  port: 8080
+
+  # Admin credentials
+  admin_user: admin
+  admin_password: changeme
+
+  # Secret key for sessions (generate with: openssl rand -hex 32)
+  secret_key: change-this-to-random-string
+
+# Automation Level
+# 1 = Basic (ICMP + SNMP only, no agents)
+# 2 = Semi-Auto (+ Agent deployment scripts available)
+# 3 = Full Auto (+ AD integration, GPO deployment)
+automation_level: 2
+
+# Active Directory Integration (Level 3 only)
+active_directory:
+  enabled: false
+
+  # AD Server
+  server: dc.example.com
+  port: 389
+  use_ssl: false
+
+  # Bind credentials
+  bind_dn: "CN=ServiceAccount,OU=Service,DC=example,DC=com"
+  bind_password: password
+
+  # Base DN for computer search
+  base_dn: "OU=Computers,DC=example,DC=com"
+
+  # LDAP filter for computers
+  search_filter: "(objectClass=computer)"
+
+  # Sync interval (seconds)
+  sync_interval: 3600
+
+  # Auto-import computers from AD
+  auto_import: true
+
+# Logging Configuration
+logging:
+  # Log level: DEBUG, INFO, WARNING, ERROR, CRITICAL
+  level: INFO
+
+  # Log file location
+  file: /var/log/plug-monitor/plug-monitor.log
+
+  # Max log file size (bytes)
+  max_size: 10485760  # 10MB
+
+  # Number of backup files to keep
+  backup_count: 5
+
+  # Log format
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+
+# Advanced Settings
+advanced:
+  # API request timeout (seconds)
+  api_timeout: 10
+
+  # Retry failed API calls
+  api_retry: true
+  api_retry_count: 3
+  api_retry_delay: 5
+
+  # Rate limiting for API calls (calls per minute)
+  api_rate_limit: 60
+
+  # Database for tracking processed hosts
+  processed_hosts_db: /opt/plug-monitor/data/processed_hosts.json
+
+  # Scan results directory
+  scan_data_dir: /opt/plug-monitor/data/scans
+
+# PSK Encryption Settings (for agent communication)
+psk:
+  # Enable PSK encryption
+  enabled: true
+
+  # Auto-generate PSK keys for new hosts
+  auto_generate: true
+
+  # PSK key length (256 or 512 bits)
+  key_length: 256
+
+  # Key storage directory
+  key_dir: /opt/plug-monitor/data/keys
+
+# Notification Settings
+notifications:
+  # Enable notifications
+  enabled: false
+
+  # Telegram
+  telegram:
+    enabled: false
+    bot_token: ""
+    chat_id: ""
+
+  # Slack
+  slack:
+    enabled: false
+    webhook_url: ""
+
+  # Email
+  email:
+    enabled: false
+    smtp_server: smtp.gmail.com
+    smtp_port: 587
+    username: ""
+    password: ""
+    from_addr: ""
+    to_addrs: []

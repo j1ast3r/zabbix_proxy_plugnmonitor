@@ -1,0 +1,37 @@
+# Ansible Inventory File for Zabbix Agent Deployment
+# Copy this file to inventory.ini and customize
+
+# Ubuntu/Debian servers
+[ubuntu_servers]
+srv-web-01 ansible_host=192.168.1.101
+srv-web-02 ansible_host=192.168.1.102
+srv-db-01 ansible_host=192.168.1.103
+
+# CentOS/RHEL servers
+[centos_servers]
+srv-app-01 ansible_host=192.168.1.111
+srv-app-02 ansible_host=192.168.1.112
+
+# Workstations
+[workstations]
+ws-dev-01 ansible_host=192.168.1.201
+ws-dev-02 ansible_host=192.168.1.202
+
+# Group all Linux hosts
+[linux:children]
+ubuntu_servers
+centos_servers
+workstations
+
+# Variables for all hosts
+[all:vars]
+ansible_user=admin
+ansible_password=changeme
+# Or use SSH key:
+# ansible_ssh_private_key_file=~/.ssh/id_rsa
+ansible_become=yes
+ansible_become_method=sudo
+ansible_python_interpreter=/usr/bin/python3
+
+# Connection settings
+ansible_ssh_common_args='-o StrictHostKeyChecking=no'

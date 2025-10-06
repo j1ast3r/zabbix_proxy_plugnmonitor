@@ -1,0 +1,221 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<zabbix_export>
+    <version>7.0</version>
+    <template_groups>
+        <template_group>
+            <name>Templates/Operating systems</name>
+        </template_group>
+    </template_groups>
+    <templates>
+        <template>
+            <template>PlugMonitor Linux Template</template>
+            <name>PlugMonitor Linux Template</name>
+            <description>Custom Linux monitoring template for Plug &amp; Monitor</description>
+            <groups>
+                <group>
+                    <name>Templates/Operating systems</name>
+                </group>
+            </groups>
+            <items>
+                <!-- CPU -->
+                <item>
+                    <name>CPU utilization</name>
+                    <key>system.cpu.util</key>
+                    <delay>1m</delay>
+                    <units>%</units>
+                    <description>CPU utilization in %</description>
+                </item>
+                <item>
+                    <name>CPU load average (1m)</name>
+                    <key>system.cpu.load[percpu,avg1]</key>
+                    <delay>1m</delay>
+                    <description>Load average (1 minute)</description>
+                </item>
+                <item>
+                    <name>CPU load average (5m)</name>
+                    <key>system.cpu.load[percpu,avg5]</key>
+                    <delay>1m</delay>
+                </item>
+                <item>
+                    <name>CPU load average (15m)</name>
+                    <key>system.cpu.load[percpu,avg15]</key>
+                    <delay>1m</delay>
+                </item>
+
+                <!-- Memory -->
+                <item>
+                    <name>Memory utilization</name>
+                    <key>vm.memory.util</key>
+                    <delay>1m</delay>
+                    <units>%</units>
+                </item>
+                <item>
+                    <name>Available memory</name>
+                    <key>vm.memory.size[available]</key>
+                    <delay>1m</delay>
+                    <units>B</units>
+                </item>
+                <item>
+                    <name>Total memory</name>
+                    <key>vm.memory.size[total]</key>
+                    <delay>1h</delay>
+                    <units>B</units>
+                </item>
+
+                <!-- Swap -->
+                <item>
+                    <name>Swap utilization</name>
+                    <key>system.swap.size[,pused]</key>
+                    <delay>1m</delay>
+                    <units>%</units>
+                </item>
+
+                <!-- Disk -->
+                <item>
+                    <name>Root filesystem utilization</name>
+                    <key>vfs.fs.size[/,pused]</key>
+                    <delay>5m</delay>
+                    <units>%</units>
+                </item>
+                <item>
+                    <name>Root filesystem free space</name>
+                    <key>vfs.fs.size[/,free]</key>
+                    <delay>5m</delay>
+                    <units>B</units>
+                </item>
+
+                <!-- Network -->
+                <item>
+                    <name>Incoming network traffic on eth0</name>
+                    <key>net.if.in[eth0]</key>
+                    <delay>1m</delay>
+                    <units>bps</units>
+                    <preprocessing>
+                        <step>
+                            <type>CHANGE_PER_SECOND</type>
+                        </step>
+                        <step>
+                            <type>MULTIPLIER</type>
+                            <params>8</params>
+                        </step>
+                    </preprocessing>
+                </item>
+                <item>
+                    <name>Outgoing network traffic on eth0</name>
+                    <key>net.if.out[eth0]</key>
+                    <delay>1m</delay>
+                    <units>bps</units>
+                    <preprocessing>
+                        <step>
+                            <type>CHANGE_PER_SECOND</type>
+                        </step>
+                        <step>
+                            <type>MULTIPLIER</type>
+                            <params>8</params>
+                        </step>
+                    </preprocessing>
+                </item>
+
+                <!-- System -->
+                <item>
+                    <name>System uptime</name>
+                    <key>system.uptime</key>
+                    <delay>10m</delay>
+                    <units>uptime</units>
+                </item>
+                <item>
+                    <name>Number of processes</name>
+                    <key>proc.num[]</key>
+                    <delay>1m</delay>
+                </item>
+                <item>
+                    <name>System name</name>
+                    <key>system.uname</key>
+                    <delay>1h</delay>
+                </item>
+                <item>
+                    <name>Agent ping</name>
+                    <key>agent.ping</key>
+                    <delay>1m</delay>
+                    <description>Agent availability check</description>
+                </item>
+            </items>
+
+            <triggers>
+                <trigger>
+                    <expression>last(/PlugMonitor Linux Template/system.cpu.util)&gt;90</expression>
+                    <name>High CPU utilization on {HOST.NAME}</name>
+                    <priority>WARNING</priority>
+                    <description>CPU utilization is too high</description>
+                </trigger>
+                <trigger>
+                    <expression>last(/PlugMonitor Linux Template/vm.memory.util)&gt;90</expression>
+                    <name>High memory utilization on {HOST.NAME}</name>
+                    <priority>WARNING</priority>
+                </trigger>
+                <trigger>
+                    <expression>last(/PlugMonitor Linux Template/vfs.fs.size[/,pused])&gt;90</expression>
+                    <name>Root filesystem is running out of space on {HOST.NAME}</name>
+                    <priority>WARNING</priority>
+                </trigger>
+                <trigger>
+                    <expression>last(/PlugMonitor Linux Template/vfs.fs.size[/,pused])&gt;95</expression>
+                    <name>Root filesystem is critically low on {HOST.NAME}</name>
+                    <priority>HIGH</priority>
+                </trigger>
+                <trigger>
+                    <expression>last(/PlugMonitor Linux Template/agent.ping)=0</expression>
+                    <name>{HOST.NAME} is unreachable</name>
+                    <priority>HIGH</priority>
+                    <description>Agent is not responding</description>
+                </trigger>
+            </triggers>
+
+            <graphs>
+                <graph>
+                    <name>CPU utilization</name>
+                    <graph_items>
+                        <graph_item>
+                            <color>1A7C11</color>
+                            <item>
+                                <host>PlugMonitor Linux Template</host>
+                                <key>system.cpu.util</key>
+                            </item>
+                        </graph_item>
+                    </graph_items>
+                </graph>
+                <graph>
+                    <name>Memory utilization</name>
+                    <graph_items>
+                        <graph_item>
+                            <color>C80000</color>
+                            <item>
+                                <host>PlugMonitor Linux Template</host>
+                                <key>vm.memory.util</key>
+                            </item>
+                        </graph_item>
+                    </graph_items>
+                </graph>
+                <graph>
+                    <name>Network traffic on eth0</name>
+                    <graph_items>
+                        <graph_item>
+                            <color>00AA00</color>
+                            <item>
+                                <host>PlugMonitor Linux Template</host>
+                                <key>net.if.in[eth0]</key>
+                            </item>
+                        </graph_item>
+                        <graph_item>
+                            <color>3333FF</color>
+                            <item>
+                                <host>PlugMonitor Linux Template</host>
+                                <key>net.if.out[eth0]</key>
+                            </item>
+                        </graph_item>
+                    </graph_items>
+                </graph>
+            </graphs>
+        </template>
+    </templates>
+</zabbix_export>

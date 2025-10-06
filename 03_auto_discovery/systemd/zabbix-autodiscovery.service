@@ -1,0 +1,44 @@
+[Unit]
+Description=Zabbix Auto-Discovery Service for Plug & Monitor
+Documentation=https://docs.plug-monitor.com
+After=network-online.target zabbix-proxy.service
+Wants=network-online.target
+Requires=zabbix-proxy.service
+
+[Service]
+Type=simple
+User=root
+Group=root
+WorkingDirectory=/opt/plug-monitor/03_auto_discovery
+
+# Main process
+ExecStart=/opt/plug-monitor/venv/bin/python3 /opt/plug-monitor/03_auto_discovery/auto_discovery.py --config /opt/plug-monitor/config/config.yml --interval 60
+
+# Restart policy
+Restart=always
+RestartSec=10
+StartLimitInterval=200
+StartLimitBurst=5
+
+# Resource limits
+MemoryLimit=256M
+CPUQuota=50%
+
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/plug-monitor/data /var/log/plug-monitor
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=zabbix-autodiscovery
+
+# Environment
+Environment="PYTHONUNBUFFERED=1"
+Environment="PATH=/opt/plug-monitor/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+
+[Install]
+WantedBy=multi-user.target

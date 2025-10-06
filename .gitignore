@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+*.egg-info/
+dist/
+build/
+
+# PyCharm
+.idea/
+*.iml
+
+# Config files with sensitive data
+config.yml
+!config.yml.example
+*.psk
+
+# Data
+data/
+scans/
+keys/
+
+# Logs
+*.log
+
+# Temporary
+*.tmp
+.DS_Store
+
+# Secrets
+.env

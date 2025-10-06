@@ -1,0 +1,107 @@
+{
+  "dashboard": {
+    "name": "Plug & Monitor Overview",
+    "display_period": "30",
+    "auto_start": "1",
+    "pages": [
+      {
+        "name": "Overview",
+        "widgets": [
+          {
+            "type": "problemsbysv",
+            "name": "Problems by Severity",
+            "x": "0",
+            "y": "0",
+            "width": "12",
+            "height": "5",
+            "fields": [
+              {
+                "type": "INTEGER",
+                "name": "show_suppressed",
+                "value": "0"
+              }
+            ]
+          },
+          {
+            "type": "problemhosts",
+            "name": "Top Hosts with Problems",
+            "x": "12",
+            "y": "0",
+            "width": "12",
+            "height": "5"
+          },
+          {
+            "type": "hostavail",
+            "name": "Host Availability",
+            "x": "0",
+            "y": "5",
+            "width": "8",
+            "height": "4",
+            "fields": [
+              {
+                "type": "INTEGER",
+                "name": "maintenance",
+                "value": "1"
+              }
+            ]
+          },
+          {
+            "type": "systeminfo",
+            "name": "System Information",
+            "x": "8",
+            "y": "5",
+            "width": "8",
+            "height": "4"
+          },
+          {
+            "type": "graph",
+            "name": "CPU Utilization",
+            "x": "16",
+            "y": "5",
+            "width": "8",
+            "height": "4"
+          },
+          {
+            "type": "item",
+            "name": "Total Hosts",
+            "x": "0",
+            "y": "9",
+            "width": "6",
+            "height": "3",
+            "fields": [
+              {
+                "type": "STRING",
+                "name": "description",
+                "value": "Total monitored hosts"
+              }
+            ]
+          },
+          {
+            "type": "item",
+            "name": "Active Problems",
+            "x": "6",
+            "y": "9",
+            "width": "6",
+            "height": "3"
+          },
+          {
+            "type": "item",
+            "name": "Active Triggers",
+            "x": "12",
+            "y": "9",
+            "width": "6",
+            "height": "3"
+          },
+          {
+            "type": "item",
+            "name": "Hosts in Maintenance",
+            "x": "18",
+            "y": "9",
+            "width": "6",
+            "height": "3"
+          }
+        ]
+      }
+    ]
+  }
+}
