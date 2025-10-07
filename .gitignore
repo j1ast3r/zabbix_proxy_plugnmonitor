@@ -17,7 +17,7 @@ build/
 
 # Config files with sensitive data
 config.yml
-!config.yml.example
+!03_auto_discovery/config.yml.example
 *.psk
 
 # Data
