@@ -1,245 +1,176 @@
-# Zabbix Proxy Configuration Template
-# Version: 7.0 LTS
-# Optimized for: Raspberry Pi 4 (4GB RAM)
+# Zabbix Proxy Configuration File
+# Template for Plug & Monitor installation
+# Replace variables before use:
+# - {{ZABBIX_SERVER}} - IP address of Zabbix Server
+# - {{PROXY_NAME}} - Unique proxy name
+# - {{DB_PATH}} - Path to SQLite database
 
-### MANDATORY PARAMETERS ###
+############ GENERAL PARAMETERS #################
 
-# Zabbix Server IP or hostname
-Server=192.168.1.10
-
-# Zabbix Server port
-ServerPort=10051
-
-# Unique proxy hostname (must match name in Zabbix frontend)
-Hostname=PlugMonitor-Proxy-RPI001
-
-### PATHS ###
-
-LogFile=/var/log/zabbix/zabbix_proxy.log
-LogFileSize=10
-PidFile=/run/zabbix/zabbix_proxy.pid
-SocketDir=/run/zabbix
-DBName=/var/lib/zabbix/zabbix_proxy.db
-SNMPTrapperFile=/var/log/zabbix/zabbix_traps.tmp
-Timeout=4
-FpingLocation=/usr/bin/fping
-Fping6Location=/usr/bin/fping6
-LogSlowQueries=3000
-StatsAllowedIP=127.0.0.1
-
-### PROXY MODE ###
-
-# 0 - active proxy (proxy initiates connections)
-# 1 - passive proxy (server connects to proxy)
+# Proxy operating mode
+# 0 = active proxy (default)
+# 1 = passive proxy
 ProxyMode=0
 
-### PROCESS CONFIGURATION ###
+# IP address or DNS name of Zabbix Server
+Server={{ZABBIX_SERVER}}
+
+# Unique proxy name
+# Must match proxy name configured on Zabbix Server
+Hostname={{PROXY_NAME}}
+
+# Port for connections from Zabbix Server
+ListenPort=10051
+
+############ ADVANCED PARAMETERS #################
+
+# PID file
+PidFile=/var/run/zabbix/zabbix_proxy.pid
+
+# Log file location
+LogFile=/var/log/zabbix/zabbix_proxy.log
+
+# Maximum log file size in MB (0 = no rotation)
+LogFileSize=10
+
+# Log level
+# 0 = no logging
+# 1 = critical
+# 2 = error
+# 3 = warning (recommended)
+# 4 = debug
+# 5 = trace
+DebugLevel=3
+
+############ DATABASE PARAMETERS #################
+
+# Database name (for SQLite3 - full path to database file)
+DBName={{DB_PATH}}
+
+# For SQLite, no other DB parameters needed
+
+############ PROXY SPECIFIC PARAMETERS #################
+
+# Proxy local buffer time in hours
+# How long to keep data if connection to Server is lost
+ProxyLocalBuffer=24
+
+# Proxy offline buffer time in hours
+# How long to keep data after Server stops accepting data
+ProxyOfflineBuffer=72
+
+# How often proxy retrieves configuration from Server (in seconds)
+ProxyConfigFrequency=10
+
+# How often proxy sends data to Server (in seconds)
+DataSenderFrequency=1
+
+############ PERFORMANCE TUNING #################
 
 # Number of pre-forked instances of pollers
-# Recommended: 5-10 for RPi4
 StartPollers=5
 
-# Pollers for unreachable hosts
+# Number of pre-forked instances of IPMI pollers
+StartIPMIPollers=0
+
+# Number of pre-forked instances of pollers for unreachable hosts
 StartPollersUnreachable=1
 
 # Number of pre-forked instances of trappers
-# Handles incoming connections from agents
 StartTrappers=5
 
 # Number of pre-forked instances of ICMP pingers
 StartPingers=1
 
 # Number of pre-forked instances of discoverers
-StartDiscoverers=1
+StartDiscoverers=3
 
 # Number of pre-forked instances of HTTP pollers
 StartHTTPPollers=1
 
-# Preprocessor workers
-StartPreprocessors=3
-
-# History syncers
-StartHistoryPollers=1
-
-### CACHE CONFIGURATION ###
-
-# Size of configuration cache (hosts, items, triggers)
-# Range: 128K-8G
-# RPi4 recommended: 32M-64M
+# Configuration cache size (for proxy)
 CacheSize=32M
 
-# Size of history cache
-# Range: 128K-2G
-# RPi4 recommended: 16M-32M
+# Number of pre-forked instances of DB syncers
+StartDBSyncers=4
+
+# History cache size
 HistoryCacheSize=16M
 
-# Size of history index cache
-# Range: 128K-2G
-# RPi4 recommended: 4M-8M
+# History index cache size
 HistoryIndexCacheSize=4M
 
-# Size of trend write cache
-# Range: 128K-2G
-TrendCacheSize=4M
-
-# Size of value cache
-# Range: 0-64G (0=disabled)
-# RPi4 recommended: 8M-16M
-ValueCacheSize=8M
-
-### DATABASE ###
-
-# Maximum number of hours to keep unsent data
-# If proxy cannot send data to server
-ProxyOfflineBuffer=24
-
-# How often proxy sends heartbeat to server (seconds)
-# Range: 0-3600
-HeartbeatFrequency=60
-
-# How often proxy retrieves configuration from server (seconds)
-# Range: 1-604800
-ConfigFrequency=300
-
-# How often proxy sends collected data to server (seconds)
-# Range: 1-3600
-DataSenderFrequency=1
-
-### HOUSEKEEPING ###
-
-# How often Zabbix performs housekeeping (hours)
-HousekeepingFrequency=1
-
-### NETWORK ###
-
-# How long to wait for network operations (seconds)
+# Timeout for processing checks (in seconds)
 Timeout=4
 
-# How long to keep items unreachable before setting to not supported
+# Timeout for processing trapper data (in seconds)
+TrapperTimeout=300
+
+# Period for which unreachable checks are executed (in seconds)
 UnreachablePeriod=45
 
-# How often to check unreachable hosts (seconds)
+# Delay between unavailability checks (in seconds)
 UnavailableDelay=60
 
-# How often to check unreachable hosts after they become unreachable
+# Delay between unreachable host checks (in seconds)
 UnreachableDelay=15
 
-### ENCRYPTION ###
+############ EXTERNAL SCRIPTS #################
 
-# TLS connection mode
-# unencrypted - no encryption
-# psk - pre-shared key
-# cert - certificate
-TLSConnect=unencrypted
+# Location of external scripts
+ExternalScripts=/usr/lib/zabbix/externalscripts
 
-# What incoming connections to accept
-# unencrypted, psk, cert
-TLSAccept=unencrypted
+# Location of fping utility
+FpingLocation=/usr/bin/fping
 
-# Full pathname of file containing PSK
-# TLSPSKFile=/etc/zabbix/zabbix_proxy.psk
+# Location of fping6 utility
+Fping6Location=/usr/bin/fping6
 
-# Unique PSK identity string
-# TLSPSKIdentity=PlugMonitor-Proxy-001
+# Log slow database queries (in milliseconds, 0 = disabled)
+LogSlowQueries=3000
 
-# Full pathname of certificate file
-# TLSCertFile=/etc/zabbix/zabbix_proxy.crt
+############ ADVANCED FEATURES #################
 
-# Full pathname of private key file
-# TLSKeyFile=/etc/zabbix/zabbix_proxy.key
+# Socket directory
+SocketDir=/var/run/zabbix
 
-# Full pathname of CA certificate file
-# TLSCAFile=/etc/zabbix/ca.crt
-
-### SECURITY ###
-
-# Enable remote commands from Zabbix server
-# 0 - disabled (recommended)
-# 1 - enabled
+# Allow remote commands from Server
+# 0 = disabled (recommended for security)
+# 1 = enabled
 EnableRemoteCommands=0
 
 # Log remote commands
 LogRemoteCommands=0
 
-# Allow root to execute remote commands
-# 0 - do not allow
-# 1 - allow
-AllowRoot=0
+############ TLS-RELATED PARAMETERS #################
 
-### PERFORMANCE ###
+# Connections to Server:
+# unencrypted - connect without encryption
+# psk - connect using PSK (recommended)
+# cert - connect using certificate
+#TLSConnect=psk
 
-# Maximum number of simultaneously processed new values
-# Range: 1-1000
-# StartDBSyncers=4
+# Accepted connections from Server:
+# unencrypted - accept connections without encryption
+# psk - accept connections with PSK
+# cert - accept connections with certificate
+#TLSAccept=psk
 
-# Java gateway configuration (if monitoring Java apps)
-# JavaGateway=127.0.0.1
-# JavaGatewayPort=10052
-# StartJavaPollers=0
+# PSK identity (for encrypted connections)
+#TLSPSKIdentity=PSK_PlugMonitor_Proxy
 
-# SNMP trapper
-# StartSNMPTrapper=0
-# SNMPTrapperFile=/var/log/zabbix/zabbix_traps.tmp
+# PSK key file location (for encrypted connections)
+#TLSPSKFile=/etc/zabbix/zabbix_proxy.psk
 
-### VMWARE MONITORING ###
-# StartVMwareCollectors=0
-# VMwareFrequency=60
-# VMwarePerfFrequency=60
-# VMwareCacheSize=8M
-# VMwareTimeout=10
+############ LOADABLE MODULES #################
 
-### EXTERNAL SCRIPTS ###
-ExternalScripts=/usr/lib/zabbix/externalscripts
+# Module path
+#LoadModulePath=${libdir}/modules
 
-# Timeout for external scripts
-# Range: 1-300
-# Timeout=3
+# Modules to load
+#LoadModule=
 
-### LOADABLE MODULES ###
-# LoadModulePath=/usr/lib/zabbix/modules
+############ USER PARAMETERS #################
 
-### USER PARAMETERS ###
-# Include=/etc/zabbix/zabbix_proxy.conf.d/*.conf
-
-### DEBUG ###
-
-# Log level
-# 0 - basic
-# 1 - critical
-# 2 - error
-# 3 - warning (default)
-# 4 - debug
-# 5 - trace
-DebugLevel=3
-
-# SOURCE IP FOR OUTGOING CONNECTIONS
-# SourceIP=
-
-### HIGH AVAILABILITY ###
-
-# For clustered proxy setups
-# HANodeName=
-# NodeAddress=localhost:10051
-
-########################################
-# RASPBERRY PI OPTIMIZATION NOTES
-########################################
-#
-# For RPi 4GB:
-# - Keep CacheSize between 32M-64M
-# - HistoryCacheSize: 16M-32M
-# - StartPollers: 5-8
-# - ProxyOfflineBuffer: 24-48 hours
-#
-# For RPi 8GB:
-# - Can increase caches by 50-100%
-# - More pollers (8-12)
-#
-# Monitor with:
-# zabbix_proxy -R diaginfo
-#
-# Check memory:
-# free -h
-# ps aux | grep zabbix
-#
-########################################
+# Include user parameters from directory
+#Include=/etc/zabbix/zabbix_proxy.conf.d/*.conf
