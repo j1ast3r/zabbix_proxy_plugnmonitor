@@ -1,8 +1,8 @@
 #!/bin/bash
 #================================================================
-# Zabbix Proxy Installation Script - FIXED VERSION
+# Zabbix Proxy Installation Script - FULLY FIXED VERSION
 # Installs Zabbix 7.0 LTS Proxy on Raspberry Pi
-# All permission issues fixed
+# All bugs fixed for Debian 13 "trixie"
 #================================================================
 
 set -e
@@ -16,6 +16,7 @@ NC='\033[0m'
 log_info() { echo -e "${BLUE}[INFO]${NC} $1"; }
 log_success() { echo -e "${GREEN}[SUCCESS]${NC} $1"; }
 log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
+log_warning() { echo -e "${YELLOW}[WARNING]${NC} $1"; }
 
 # Check root
 if [[ $EUID -ne 0 ]]; then
@@ -24,7 +25,7 @@ if [[ $EUID -ne 0 ]]; then
 fi
 
 echo -e "${BLUE}================================================${NC}"
-echo -e "${BLUE}  Zabbix Proxy Installation${NC}"
+echo -e "${BLUE}  Zabbix Proxy 7.0 Installation${NC}"
 echo -e "${BLUE}================================================${NC}"
 echo ""
 
@@ -33,7 +34,7 @@ echo ""
 #================================================================
 log_info "Installing dependencies..."
 apt-get update
-apt-get install -y wget gnupg2 software-properties-common sqlite3
+apt-get install -y wget gnupg2 software-properties-common sqlite3 fping
 log_success "Dependencies installed"
 
 #================================================================
@@ -43,9 +44,16 @@ log_info "Adding Zabbix 7.0 LTS repository..."
 DEBIAN_CODENAME=$(lsb_release -cs)
 log_info "Detected Debian version: $DEBIAN_CODENAME"
 
-wget "https://repo.zabbix.com/zabbix/7.0/debian/pool/main/z/zabbix-release/zabbix-release_7.0-1+${DEBIAN_CODENAME}_all.deb"
-dpkg -i "zabbix-release_7.0-1+${DEBIAN_CODENAME}_all.deb"
-rm "zabbix-release_7.0-1+${DEBIAN_CODENAME}_all.deb"
+# Download repository package
+wget "https://repo.zabbix.com/zabbix/7.0/debian/pool/main/z/zabbix-release/zabbix-release_latest+debian13_all.deb" -O /tmp/zabbix-release.deb
+
+if [ ! -f /tmp/zabbix-release.deb ] || [ ! -s /tmp/zabbix-release.deb ]; then
+    log_error "Failed to download Zabbix repository package"
+    exit 1
+fi
+
+dpkg -i /tmp/zabbix-release.deb
+rm /tmp/zabbix-release.deb
 apt-get update
 
 log_success "Zabbix repository added"
@@ -61,7 +69,7 @@ DEBIAN_FRONTEND=noninteractive apt-get install -y \
 log_success "Zabbix Proxy installed"
 
 #================================================================
-# 4. Create user and directories - FIXED ORDER!
+# 4. Create user and directories - FIXED!
 #================================================================
 log_info "Creating zabbix user..."
 
@@ -96,27 +104,55 @@ chmod 755 /var/run/zabbix
 log_success "Permissions set"
 
 #================================================================
-# 5. Initialize SQLite database
+# 5. Initialize SQLite database - FIXED!
 #================================================================
 log_info "Initializing SQLite database..."
 
 DB_PATH="/var/lib/zabbix/zabbix_proxy.db"
 
+# FIX: Check multiple possible paths for SQL schema
+SQL_SCHEMA=""
+
 if [ -f /usr/share/zabbix-sql-scripts/sqlite3/proxy.sql ]; then
-    cat /usr/share/zabbix-sql-scripts/sqlite3/proxy.sql | sqlite3 "$DB_PATH"
-
-    # Set correct permissions on database
-    chown zabbix:zabbix "$DB_PATH"
-    chmod 640 "$DB_PATH"
-
-    log_success "Database initialized"
+    SQL_SCHEMA="/usr/share/zabbix-sql-scripts/sqlite3/proxy.sql"
+    log_info "Found SQL schema: $SQL_SCHEMA"
+elif [ -f /usr/share/doc/zabbix-sql-scripts/sqlite3/proxy.sql ]; then
+    SQL_SCHEMA="/usr/share/doc/zabbix-sql-scripts/sqlite3/proxy.sql"
+    log_info "Found SQL schema: $SQL_SCHEMA"
+elif [ -f /usr/share/doc/zabbix-sql-scripts/sqlite3/proxy.sql.gz ]; then
+    SQL_SCHEMA="/usr/share/doc/zabbix-sql-scripts/sqlite3/proxy.sql.gz"
+    log_info "Found compressed SQL schema: $SQL_SCHEMA"
+    # Decompress
+    gunzip -c "$SQL_SCHEMA" > /tmp/proxy.sql
+    SQL_SCHEMA="/tmp/proxy.sql"
 else
     log_error "SQL schema not found!"
+    log_error "Searched in:"
+    log_error "  /usr/share/zabbix-sql-scripts/sqlite3/"
+    log_error "  /usr/share/doc/zabbix-sql-scripts/sqlite3/"
     exit 1
 fi
 
+# Check that schema is not empty
+if [ ! -s "$SQL_SCHEMA" ]; then
+    log_error "SQL schema is empty: $SQL_SCHEMA"
+    exit 1
+fi
+
+# Create database
+cat "$SQL_SCHEMA" | sqlite3 "$DB_PATH"
+
+# Cleanup temporary file
+[ -f /tmp/proxy.sql ] && rm /tmp/proxy.sql
+
+# Set database permissions
+chown zabbix:zabbix "$DB_PATH"
+chmod 640 "$DB_PATH"
+
+log_success "Database initialized"
+
 #================================================================
-# 6. Create configuration file
+# 6. Create configuration file - FIXED!
 #================================================================
 log_info "Creating configuration file..."
 
@@ -126,6 +162,7 @@ PROXY_NAME=${PROXY_NAME:-"PlugMonitor-Proxy-$(hostname)"}
 log_info "Zabbix Server: $ZABBIX_SERVER"
 log_info "Proxy Name: $PROXY_NAME"
 
+# CRITICAL FIX: Removed HeartbeatFrequency (doesn't exist in Zabbix 7.0)
 cat > /etc/zabbix/zabbix_proxy.conf << EOF
 # Zabbix Proxy Configuration File
 # Automatically generated by Plug & Monitor
@@ -185,7 +222,7 @@ EnableRemoteCommands=0
 LogRemoteCommands=0
 EOF
 
-# CRITICAL FIX: Correct permissions on config file!
+# CRITICAL FIX: Correct config file permissions!
 chown root:zabbix /etc/zabbix/zabbix_proxy.conf
 chmod 640 /etc/zabbix/zabbix_proxy.conf
 
@@ -213,24 +250,41 @@ systemctl enable zabbix-proxy
 log_success "Service configured"
 
 #================================================================
-# 9. Start and verify
+# 9. Start and verify - IMPROVED!
 #================================================================
 log_info "Starting Zabbix Proxy..."
 
+# Stop if already running
 systemctl stop zabbix-proxy 2>/dev/null || true
 sleep 2
+
+# Start
 systemctl start zabbix-proxy
+
+# Wait for startup
 sleep 5
 
+# CRITICAL CHECK: Is service really running?
 if systemctl is-active --quiet zabbix-proxy; then
     log_success "Zabbix Proxy started successfully!"
     echo ""
     systemctl status zabbix-proxy --no-pager -l | head -15
+
+    # Additional check - is process running?
+    if pgrep -x "zabbix_proxy" > /dev/null; then
+        log_success "Process zabbix_proxy found (PID: $(pgrep -x zabbix_proxy))"
+    else
+        log_warning "Process zabbix_proxy not found!"
+    fi
+
 else
     log_error "Zabbix Proxy failed to start!"
     echo ""
-    log_info "Last 20 log lines:"
-    journalctl -u zabbix-proxy -n 20 --no-pager
+    log_info "Last 30 log lines:"
+    journalctl -u zabbix-proxy -n 30 --no-pager
+    echo ""
+    log_info "Proxy log file:"
+    tail -20 /var/log/zabbix/zabbix_proxy.log 2>/dev/null || echo "Log file is empty"
     exit 1
 fi
 

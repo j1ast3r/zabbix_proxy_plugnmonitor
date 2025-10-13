@@ -2,6 +2,7 @@
 """
 Auto-Discovery Daemon for Plug & Monitor
 Automatically adds discovered hosts to Zabbix Server via API
+FIXED: Support for both API Token and Username/Password authentication
 """
 
 import json
@@ -21,14 +22,19 @@ logger = logging.getLogger(__name__)
 
 
 class ZabbixAPI:
-    """Zabbix API client"""
+    """Zabbix API client with support for both authentication methods"""
 
-    def __init__(self, url: str, user: str, password: str):
+    def __init__(self, url: str, user: str = None, password: str = None, api_token: str = None):
         self.url = url
         self.user = user
         self.password = password
+        self.api_token = api_token
         self.auth_token = None
         self.headers = {'Content-Type': 'application/json-rpc'}
+
+        # If API token provided, add to headers
+        if self.api_token:
+            self.headers['Authorization'] = f'Bearer {self.api_token}'
 
     def _call(self, method: str, params: Dict) -> Dict:
         """Make API call"""
@@ -39,6 +45,7 @@ class ZabbixAPI:
             'id': 1
         }
 
+        # Add auth token for username/password method (not needed for API token)
         if self.auth_token and method != 'user.login':
             payload['auth'] = self.auth_token
 
@@ -59,12 +66,28 @@ class ZabbixAPI:
     def login(self) -> bool:
         """Authenticate with Zabbix"""
         try:
-            self.auth_token = self._call('user.login', {
-                'username': self.user,
-                'password': self.password
-            })
-            logger.info("Successfully authenticated with Zabbix API")
-            return True
+            # If using API token, authentication is in headers - just verify it works
+            if self.api_token:
+                logger.info("Using API token authentication")
+                # Test the token by making a simple API call
+                self._call('apiinfo.version', {})
+                logger.info("Successfully authenticated with API token")
+                return True
+
+            # Otherwise use username/password authentication
+            elif self.user and self.password:
+                logger.info("Using username/password authentication")
+                self.auth_token = self._call('user.login', {
+                    'username': self.user,
+                    'password': self.password
+                })
+                logger.info("Successfully authenticated with username/password")
+                return True
+
+            else:
+                logger.error("No authentication credentials provided")
+                return False
+
         except Exception as e:
             logger.error(f"Authentication failed: {e}")
             return False
@@ -258,10 +281,18 @@ class AutoDiscovery:
         """Connect to Zabbix API"""
         try:
             zabbix_config = self.config['zabbix']
+
+            # Get authentication credentials
+            api_token = zabbix_config.get('api_token', '')
+            api_user = zabbix_config.get('api_user', '')
+            api_password = zabbix_config.get('api_password', '')
+
+            # Create API client with appropriate authentication
             self.zapi = ZabbixAPI(
                 url=zabbix_config['api_url'],
-                user=zabbix_config['api_user'],
-                password=zabbix_config['api_password']
+                user=api_user if not api_token else None,
+                password=api_password if not api_token else None,
+                api_token=api_token if api_token else None
             )
 
             if not self.zapi.login():
@@ -286,21 +317,30 @@ class AutoDiscovery:
         device_type = host_data.get('device_type', 'unknown')
         os_guess = host_data.get('os_guess', 'Unknown')
 
+        # Get template mapping from config
+        template_mapping = self.config.get('discovery', {}).get('template_mapping', {})
+
         # Template mapping logic
         if 'Linux' in os_guess:
-            template_id = self.zapi.get_template_id('Linux by Zabbix agent active')
-            if template_id:
-                templates.append(template_id)
+            template_names = template_mapping.get('linux', ['Linux by Zabbix agent active'])
+            for template_name in template_names:
+                template_id = self.zapi.get_template_id(template_name)
+                if template_id:
+                    templates.append(template_id)
 
         elif 'Windows' in os_guess:
-            template_id = self.zapi.get_template_id('Windows by Zabbix agent active')
-            if template_id:
-                templates.append(template_id)
+            template_names = template_mapping.get('windows', ['Windows by Zabbix agent active'])
+            for template_name in template_names:
+                template_id = self.zapi.get_template_id(template_name)
+                if template_id:
+                    templates.append(template_id)
 
         elif device_type == 'network_device':
-            template_id = self.zapi.get_template_id('Generic SNMP')
-            if template_id:
-                templates.append(template_id)
+            template_names = template_mapping.get('network_device', ['Generic SNMP'])
+            for template_name in template_names:
+                template_id = self.zapi.get_template_id(template_name)
+                if template_id:
+                    templates.append(template_id)
 
         # Fallback to ICMP if no specific template
         if not templates:

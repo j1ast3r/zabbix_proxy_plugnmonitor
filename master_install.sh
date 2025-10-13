@@ -1,6 +1,6 @@
 #!/bin/bash
-# Plug & Monitor - Master Installation Script (FIXED VERSION)
-# All bugs from Raspberry Pi installation fixed
+# Plug & Monitor - Master Installation Script
+# All critical bugs fixed for Debian 13 "trixie"
 
 set -e
 
@@ -37,10 +37,10 @@ check_root() {
 show_banner() {
     clear
     cat << "EOF"
-╔═══════════════════════════════════════════════════════════╗
-║     PLUG & MONITOR - Installation Wizard                  ║
-║          Automated Zabbix Monitoring                      ║
-╚═══════════════════════════════════════════════════════════╝
+╔══════════════════════════════════════════════════════════╗
+║     PLUG & MONITOR - Installation Wizard                 ║
+║          Automated Zabbix Monitoring                     ║
+╚══════════════════════════════════════════════════════════╝
 EOF
     echo ""
 }
@@ -51,12 +51,27 @@ collect_config() {
     echo ""
 
     read -p "Zabbix Server IP or hostname: " ZABBIX_SERVER
-    read -p "Zabbix API URL [http://${ZABBIX_SERVER}/zabbix/api_jsonrpc.php]: " ZABBIX_API_URL
-    ZABBIX_API_URL=${ZABBIX_API_URL:-http://${ZABBIX_SERVER}/zabbix/api_jsonrpc.php}
-    read -p "Zabbix API username [Admin]: " ZABBIX_USER
-    ZABBIX_USER=${ZABBIX_USER:-Admin}
-    read -sp "Zabbix API password: " ZABBIX_PASSWORD
+    read -p "Zabbix API URL [http://${ZABBIX_SERVER}/api_jsonrpc.php]: " ZABBIX_API_URL
+    ZABBIX_API_URL=${ZABBIX_API_URL:-http://${ZABBIX_SERVER}/api_jsonrpc.php}
+
     echo ""
+    echo "Choose authentication method:"
+    echo "  1) API Token (recommended for Zabbix 7.0+)"
+    echo "  2) Username + Password (legacy)"
+    read -p "Choice [1]: " AUTH_METHOD
+    AUTH_METHOD=${AUTH_METHOD:-1}
+
+    if [ "$AUTH_METHOD" = "1" ]; then
+        read -p "API Token: " ZABBIX_API_TOKEN
+        ZABBIX_USER=""
+        ZABBIX_PASSWORD=""
+    else
+        read -p "Zabbix API username [Admin]: " ZABBIX_USER
+        ZABBIX_USER=${ZABBIX_USER:-Admin}
+        read -sp "Zabbix API password: " ZABBIX_PASSWORD
+        echo ""
+        ZABBIX_API_TOKEN=""
+    fi
 
     read -p "Proxy name [PlugMonitor-Proxy-$(hostname)]: " PROXY_NAME
     PROXY_NAME=${PROXY_NAME:-PlugMonitor-Proxy-$(hostname)}
@@ -73,7 +88,7 @@ collect_config() {
     echo ""
 }
 
-# Create directories - FIXED
+# Create directories - ALREADY CORRECT
 create_directories() {
     print_info "Creating directory structure..."
 
@@ -82,15 +97,19 @@ create_directories() {
     mkdir -p "$INSTALL_DIR"/{01_raspberry_pi,02_network_scanner,03_auto_discovery,04_windows_deployment,05_linux_deployment,06_active_directory,07_templates,08_dashboards}
     mkdir -p "$LOG_DIR"
 
-    # CRITICAL: Create Zabbix directories
+    # CRITICAL: Create Zabbix directories FIRST
     mkdir -p /var/log/zabbix
     mkdir -p /var/lib/zabbix
+    mkdir -p /var/run/zabbix
+    mkdir -p /etc/zabbix
 
-    # Set permissions
+    # THEN set permissions
     chown -R zabbix:zabbix /var/log/zabbix 2>/dev/null || true
     chown -R zabbix:zabbix /var/lib/zabbix 2>/dev/null || true
+    chown -R zabbix:zabbix /var/run/zabbix 2>/dev/null || true
     chmod 755 /var/log/zabbix
-    chmod 755 /var/lib/zabbix
+    chmod 750 /var/lib/zabbix
+    chmod 755 /var/run/zabbix
 
     print_success "Directories created"
 }
@@ -106,34 +125,71 @@ install_zabbix_proxy() {
         OS_VERSION=$VERSION_ID
     fi
 
+    # Install dependencies
+    apt-get update >> "$LOG_FILE" 2>&1
+    apt-get install -y wget gnupg2 sqlite3 fping >> "$LOG_FILE" 2>&1
+
     # Install based on OS
     if [ "$OS_ID" = "debian" ] || [ "$OS_ID" = "raspbian" ]; then
-        wget -q https://repo.zabbix.com/zabbix/7.0/debian/pool/main/z/zabbix-release/zabbix-release_7.0-2+debian12_all.deb -O /tmp/zabbix-release.deb
+        wget -q https://repo.zabbix.com/zabbix/7.0/debian/pool/main/z/zabbix-release/zabbix-release_latest+debian13_all.deb -O /tmp/zabbix-release.deb
         dpkg -i /tmp/zabbix-release.deb >> "$LOG_FILE" 2>&1
         apt-get update >> "$LOG_FILE" 2>&1
-        apt-get install -y zabbix-proxy-sqlite3 fping >> "$LOG_FILE" 2>&1
+        apt-get install -y zabbix-proxy-sqlite3 zabbix-sql-scripts >> "$LOG_FILE" 2>&1
     elif [ "$OS_ID" = "ubuntu" ]; then
-        wget -q https://repo.zabbix.com/zabbix/7.0/ubuntu/pool/main/z/zabbix-release/zabbix-release_7.0-2+ubuntu22.04_all.deb -O /tmp/zabbix-release.deb
+        wget -q https://repo.zabbix.com/zabbix/7.0/ubuntu/pool/main/z/zabbix-release/zabbix-release_latest+ubuntu22.04_all.deb -O /tmp/zabbix-release.deb
         dpkg -i /tmp/zabbix-release.deb >> "$LOG_FILE" 2>&1
         apt-get update >> "$LOG_FILE" 2>&1
-        apt-get install -y zabbix-proxy-sqlite3 fping >> "$LOG_FILE" 2>&1
+        apt-get install -y zabbix-proxy-sqlite3 zabbix-sql-scripts >> "$LOG_FILE" 2>&1
     fi
 
-    # Configure proxy
+    # Create zabbix user if not exists
+    if ! id "zabbix" &>/dev/null; then
+        useradd --system --group --home /var/lib/zabbix --shell /sbin/nologin zabbix
+    fi
+
+    # Initialize database - FIXED
+    DB_PATH="/var/lib/zabbix/zabbix_proxy.db"
+
+    # FIX: Check multiple possible paths for SQL schema
+    SQL_SCHEMA=""
+    if [ -f /usr/share/zabbix-sql-scripts/sqlite3/proxy.sql ]; then
+        SQL_SCHEMA="/usr/share/zabbix-sql-scripts/sqlite3/proxy.sql"
+    elif [ -f /usr/share/doc/zabbix-sql-scripts/sqlite3/proxy.sql ]; then
+        SQL_SCHEMA="/usr/share/doc/zabbix-sql-scripts/sqlite3/proxy.sql"
+    elif [ -f /usr/share/doc/zabbix-sql-scripts/sqlite3/proxy.sql.gz ]; then
+        SQL_SCHEMA="/usr/share/doc/zabbix-sql-scripts/sqlite3/proxy.sql.gz"
+        gunzip -c "$SQL_SCHEMA" > /tmp/proxy.sql
+        SQL_SCHEMA="/tmp/proxy.sql"
+    else
+        print_error "SQL schema not found!"
+        exit 1
+    fi
+
+    if [ ! -s "$SQL_SCHEMA" ]; then
+        print_error "SQL schema is empty: $SQL_SCHEMA"
+        exit 1
+    fi
+
+    cat "$SQL_SCHEMA" | sqlite3 "$DB_PATH"
+    [ -f /tmp/proxy.sql ] && rm /tmp/proxy.sql
+
+    chown zabbix:zabbix "$DB_PATH"
+    chmod 640 "$DB_PATH"
+
+    # Configure proxy - FIXED: Removed HeartbeatFrequency
     cat > /etc/zabbix/zabbix_proxy.conf << EOF
 Server=${ZABBIX_SERVER}
 ServerPort=10051
 Hostname=${PROXY_NAME}
 LogFile=/var/log/zabbix/zabbix_proxy.log
 LogFileSize=10
-PidFile=/run/zabbix/zabbix_proxy.pid
-SocketDir=/run/zabbix
+PidFile=/var/run/zabbix/zabbix_proxy.pid
+SocketDir=/var/run/zabbix
 DBName=/var/lib/zabbix/zabbix_proxy.db
 Timeout=4
 FpingLocation=/usr/bin/fping
 Fping6Location=/usr/bin/fping6
 
-# Performance tuning
 StartPollers=5
 StartTrappers=5
 StartPingers=1
@@ -141,18 +197,21 @@ CacheSize=32M
 HistoryCacheSize=16M
 
 ProxyOfflineBuffer=24
-HeartbeatFrequency=60
-ConfigFrequency=300
+ProxyConfigFrequency=10
+DataSenderFrequency=1
 
 TLSConnect=unencrypted
 TLSAccept=unencrypted
 EnableRemoteCommands=0
 EOF
 
-    # Ensure database directory exists and has correct permissions
-    mkdir -p /var/lib/zabbix
-    chown zabbix:zabbix /var/lib/zabbix
-    chmod 750 /var/lib/zabbix
+    chown root:zabbix /etc/zabbix/zabbix_proxy.conf
+    chmod 640 /etc/zabbix/zabbix_proxy.conf
+
+    # Create log file
+    touch /var/log/zabbix/zabbix_proxy.log
+    chown zabbix:zabbix /var/log/zabbix/zabbix_proxy.log
+    chmod 644 /var/log/zabbix/zabbix_proxy.log
 
     systemctl enable zabbix-proxy >> "$LOG_FILE" 2>&1
     systemctl restart zabbix-proxy >> "$LOG_FILE" 2>&1
@@ -160,7 +219,7 @@ EOF
     print_success "Zabbix Proxy installed"
 }
 
-# Setup Python environment - FIXED
+# Setup Python environment
 setup_python_env() {
     print_info "Setting up Python environment..."
 
@@ -170,7 +229,6 @@ setup_python_env() {
 
     pip install --upgrade pip >> "$LOG_FILE" 2>&1
 
-    # Install Python packages
     pip install Flask==3.0.0 >> "$LOG_FILE" 2>&1
     pip install Flask-CORS==4.0.0 >> "$LOG_FILE" 2>&1
     pip install python-nmap==0.7.1 >> "$LOG_FILE" 2>&1
@@ -182,31 +240,45 @@ setup_python_env() {
     print_success "Python environment ready"
 }
 
-# Copy project files - FIXED
+# Copy project files - FIXED with verification
 copy_project_files() {
     print_info "Copying project files..."
 
-    # Copy Python files from script directory to install directory
-    if [ -f "$SCRIPT_DIR/03_auto_discovery/auto_discovery.py" ]; then
-        cp "$SCRIPT_DIR/03_auto_discovery/auto_discovery.py" "$INSTALL_DIR/03_auto_discovery/"
-        print_success "Copied auto_discovery.py"
-    else
-        print_error "auto_discovery.py not found in $SCRIPT_DIR"
-    fi
+    # Function to verify file copy
+    verify_copy() {
+        local src="$1"
+        local dst="$2"
+        local name="$3"
 
-    if [ -f "$SCRIPT_DIR/02_network_scanner/web_dashboard.py" ]; then
-        cp "$SCRIPT_DIR/02_network_scanner/web_dashboard.py" "$INSTALL_DIR/02_network_scanner/"
-        print_success "Copied web_dashboard.py"
-    else
-        print_error "web_dashboard.py not found in $SCRIPT_DIR"
-    fi
+        if [ ! -f "$src" ]; then
+            print_error "$name not found: $src"
+            return 1
+        fi
 
-    if [ -f "$SCRIPT_DIR/02_network_scanner/network_scanner.py" ]; then
-        cp "$SCRIPT_DIR/02_network_scanner/network_scanner.py" "$INSTALL_DIR/02_network_scanner/"
-        print_success "Copied network_scanner.py"
-    else
-        print_error "network_scanner.py not found in $SCRIPT_DIR"
-    fi
+        cp "$src" "$dst"
+
+        if [ -f "$dst" ] && [ -s "$dst" ]; then
+            local size=$(stat -c%s "$dst")
+            print_success "Copied $name ($size bytes)"
+            return 0
+        else
+            print_error "$name copy failed or file is empty!"
+            return 1
+        fi
+    }
+
+    # Copy Python files with verification
+    verify_copy "$SCRIPT_DIR/03_auto_discovery/auto_discovery.py" \
+                "$INSTALL_DIR/03_auto_discovery/auto_discovery.py" \
+                "auto_discovery.py" || exit 1
+
+    verify_copy "$SCRIPT_DIR/02_network_scanner/web_dashboard.py" \
+                "$INSTALL_DIR/02_network_scanner/web_dashboard.py" \
+                "web_dashboard.py" || exit 1
+
+    verify_copy "$SCRIPT_DIR/02_network_scanner/network_scanner.py" \
+                "$INSTALL_DIR/02_network_scanner/network_scanner.py" \
+                "network_scanner.py" || exit 1
 
     # Copy templates if they exist
     if [ -d "$SCRIPT_DIR/02_network_scanner/templates" ]; then
@@ -215,22 +287,10 @@ copy_project_files() {
         print_success "Copied templates"
     fi
 
-    # Verify files are not empty
-    for file in "$INSTALL_DIR/03_auto_discovery/auto_discovery.py" \
-                "$INSTALL_DIR/02_network_scanner/web_dashboard.py" \
-                "$INSTALL_DIR/02_network_scanner/network_scanner.py"; do
-        if [ -f "$file" ]; then
-            size=$(stat -c%s "$file")
-            if [ "$size" -eq 0 ]; then
-                print_error "$(basename $file) is empty (0 bytes)!"
-            else
-                print_success "$(basename $file): $size bytes"
-            fi
-        fi
-    done
+    print_success "All files copied and verified"
 }
 
-# Save configuration - FIXED
+# Save configuration
 save_config() {
     print_info "Saving configuration..."
 
@@ -239,6 +299,7 @@ zabbix:
   server: ${ZABBIX_SERVER}
   server_port: 10051
   api_url: ${ZABBIX_API_URL}
+  api_token: ${ZABBIX_API_TOKEN}
   api_user: ${ZABBIX_USER}
   api_password: ${ZABBIX_PASSWORD}
   proxy_name: ${PROXY_NAME}
@@ -292,7 +353,7 @@ EOF
     print_success "Configuration saved"
 }
 
-# Install systemd services - FIXED
+# Install systemd services
 install_services() {
     print_info "Installing systemd services..."
 
@@ -340,7 +401,7 @@ EOF
     print_success "Services installed"
 }
 
-# Start services - FIXED
+# Start services
 start_services() {
     print_info "Starting services..."
 
@@ -391,9 +452,9 @@ show_summary() {
 
     clear
     echo ""
-    print_success "═══════════════════════════════════════════════════════"
+    print_success "══════════════════════════════════════════════════"
     print_success "     Installation completed successfully! 🎉"
-    print_success "═══════════════════════════════════════════════════════"
+    print_success "══════════════════════════════════════════════════"
     echo ""
     echo "📊 Access Dashboard:"
     echo "   http://${ip_addr}:${DASHBOARD_PORT}"
@@ -413,7 +474,7 @@ show_summary() {
     echo "      Mode: Active"
     echo "   2. Access dashboard and start network scan"
     echo ""
-    print_success "═══════════════════════════════════════════════════════"
+    print_success "══════════════════════════════════════════════════"
 }
 
 # Main installation
