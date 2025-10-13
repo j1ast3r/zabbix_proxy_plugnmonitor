@@ -34,7 +34,7 @@ echo ""
 #================================================================
 log_info "Installing dependencies..."
 apt-get update
-apt-get install -y wget gnupg2 software-properties-common sqlite3 fping
+apt-get install -y wget gnupg2 software-properties-common sqlite3 fping nmap
 log_success "Dependencies installed"
 
 #================================================================
@@ -170,7 +170,7 @@ cat > /etc/zabbix/zabbix_proxy.conf << EOF
 ############ GENERAL PARAMETERS #################
 
 ProxyMode=0
-Server=$ZABBIX_SERVER
+Server=$ZABBIX_SERVER:10051
 Hostname=$PROXY_NAME
 ListenPort=10051
 

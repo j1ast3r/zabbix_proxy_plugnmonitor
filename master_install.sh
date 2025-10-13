@@ -127,7 +127,7 @@ install_zabbix_proxy() {
 
     # Install dependencies
     apt-get update >> "$LOG_FILE" 2>&1
-    apt-get install -y wget gnupg2 sqlite3 fping >> "$LOG_FILE" 2>&1
+    apt-get install -y wget gnupg2 sqlite3 fping nmap >> "$LOG_FILE" 2>&1
 
     # Install based on OS
     if [ "$OS_ID" = "debian" ] || [ "$OS_ID" = "raspbian" ]; then
@@ -178,8 +178,7 @@ install_zabbix_proxy() {
 
     # Configure proxy - FIXED: Removed HeartbeatFrequency
     cat > /etc/zabbix/zabbix_proxy.conf << EOF
-Server=${ZABBIX_SERVER}
-ServerPort=10051
+Server=${ZABBIX_SERVER}:10051
 Hostname=${PROXY_NAME}
 LogFile=/var/log/zabbix/zabbix_proxy.log
 LogFileSize=10

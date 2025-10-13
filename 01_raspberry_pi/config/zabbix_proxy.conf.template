@@ -13,7 +13,7 @@
 ProxyMode=0
 
 # IP address or DNS name of Zabbix Server
-Server={{ZABBIX_SERVER}}
+Server={{ZABBIX_SERVER}}:10051
 
 # Unique proxy name
 # Must match proxy name configured on Zabbix Server
