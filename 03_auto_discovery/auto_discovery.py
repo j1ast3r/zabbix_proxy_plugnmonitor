@@ -283,16 +283,20 @@ class AutoDiscovery:
             zabbix_config = self.config['zabbix']
 
             # Get authentication credentials
-            api_token = zabbix_config.get('api_token', '')
-            api_user = zabbix_config.get('api_user', '')
-            api_password = zabbix_config.get('api_password', '')
+            api_token = zabbix_config.get('api_token', '').strip()
+            api_user = zabbix_config.get('api_user', '').strip()
+            api_password = zabbix_config.get('api_password', '').strip()
+
+            # CRITICAL FIX: Only use token if it's not empty
+            # If token is empty string or None, use username/password instead
+            use_token = bool(api_token)
 
             # Create API client with appropriate authentication
             self.zapi = ZabbixAPI(
                 url=zabbix_config['api_url'],
-                user=api_user if not api_token else None,
-                password=api_password if not api_token else None,
-                api_token=api_token if api_token else None
+                user=api_user if not use_token else None,
+                password=api_password if not use_token else None,
+                api_token=api_token if use_token else None
             )
 
             if not self.zapi.login():

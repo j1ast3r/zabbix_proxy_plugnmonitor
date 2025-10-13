@@ -38,8 +38,8 @@ show_banner() {
     clear
     cat << "EOF"
 ╔══════════════════════════════════════════════════════════╗
-║     PLUG & MONITOR - Installation Wizard                 ║
-║          Automated Zabbix Monitoring                     ║
+║     PLUG & MONITOR - Installation Wizard                  ║
+║          Automated Zabbix Monitoring                      ║
 ╚══════════════════════════════════════════════════════════╝
 EOF
     echo ""
@@ -294,15 +294,30 @@ copy_project_files() {
 save_config() {
     print_info "Saving configuration..."
 
-    cat > "${INSTALL_DIR}/config/config.yml" << EOF
-zabbix:
+    # Build zabbix config section based on auth method
+    ZABBIX_CONFIG="zabbix:
   server: ${ZABBIX_SERVER}
   server_port: 10051
-  api_url: ${ZABBIX_API_URL}
+  api_url: ${ZABBIX_API_URL}"
+
+    # Only add the auth method that's actually being used
+    if [ -n "$ZABBIX_API_TOKEN" ]; then
+        ZABBIX_CONFIG="${ZABBIX_CONFIG}
   api_token: ${ZABBIX_API_TOKEN}
+  api_user: \"\"
+  api_password: \"\""
+    else
+        ZABBIX_CONFIG="${ZABBIX_CONFIG}
+  api_token: \"\"
   api_user: ${ZABBIX_USER}
-  api_password: ${ZABBIX_PASSWORD}
-  proxy_name: ${PROXY_NAME}
+  api_password: ${ZABBIX_PASSWORD}"
+    fi
+
+    ZABBIX_CONFIG="${ZABBIX_CONFIG}
+  proxy_name: ${PROXY_NAME}"
+
+    cat > "${INSTALL_DIR}/config/config.yml" << EOF
+${ZABBIX_CONFIG}
 
 network:
   scan_range: ${SCAN_NETWORK}
