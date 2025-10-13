@@ -1,81 +1,118 @@
-# Plug & Monitor - Auto-Discovery Configuration Example
+# Plug & Monitor - Main Configuration File
+# Copy to /opt/plug-monitor/config/config.yml and edit
 
-# Zabbix Server Configuration
+# =============================================================================
+# ZABBIX SERVER CONFIGURATION
+# =============================================================================
 zabbix:
   # Zabbix Server IP or hostname
   server: 192.168.1.10
   server_port: 10051
 
   # Zabbix API URL (JSON-RPC endpoint)
+  # Format: http://<server>/api_jsonrpc.php
+  # Or: http://<server>/zabbix/api_jsonrpc.php (if in subdirectory)
   api_url: http://192.168.1.10/api_jsonrpc.php
 
-  # API credentials
+  # API Authentication - Choose ONE method:
+
+  # METHOD 1: API Token (Recommended for Zabbix 7.0+)
+  # Create token in: Administration → API tokens → Create API token
+  # Leave api_user and api_password empty if using token
+  api_token: ""  # Example: "a1b2c3d4e5f6g7h8i9j0..."
+
+  # METHOD 2: Username + Password (Legacy, still works)
+  # Only use if api_token is empty
   api_user: Admin
   api_password: zabbix
 
-  # Proxy name (must match proxy configured in Zabbix frontend)
+  # Proxy Configuration
+  # This name MUST match the proxy name in Zabbix Server frontend
   proxy_name: PlugMonitor-Proxy-RPI001
 
-# Network Scanning Configuration
+# =============================================================================
+# NETWORK SCANNING CONFIGURATION
+# =============================================================================
 network:
-  # Network range to scan (CIDR notation)
+  # Network range to scan in CIDR notation
+  # Examples:
+  #   Single network: 192.168.1.0/24
+  #   Multiple networks: ["192.168.1.0/24", "192.168.2.0/24", "10.0.0.0/24"]
   scan_range: 192.168.1.0/24
 
-  # Scan interval in seconds (3600 = 1 hour)
+  # Scan interval in seconds
+  # 3600 = 1 hour, 1800 = 30 minutes, 7200 = 2 hours
   scan_interval: 3600
 
-  # Nmap options
-  # -sn: Ping scan (no port scan)
+  # Nmap options for scanning
+  # -sn: Ping scan (no port scan) - fastest
   # -T4: Aggressive timing
+  # -PE -PP -PS22,80,443: Additional ping methods
+  # IMPORTANT: Don't use -O (OS detection) in regular scans - too slow!
   nmap_options: "-sn -T4"
 
-  # IPs to exclude from scanning
+  # IPs to exclude from scanning (gateway, servers, etc)
   exclude_ips:
-    - 192.168.1.1    # Router
-    - 192.168.1.10   # Zabbix Server
-    - 192.168.1.100  # This Raspberry Pi
+    - 192.168.1.1      # Router/Gateway
+    - 192.168.1.10     # Zabbix Server
+    - 192.168.1.100    # This Raspberry Pi
 
-# Discovery Configuration
+  # Advanced: Multiple network configurations
+  # Uncomment to use different settings for different networks
+  # scan_configs:
+  #   - name: "Office Network"
+  #     range: 192.168.1.0/24
+  #     interval: 3600
+  #     options: "-sn -T4"
+  #
+  #   - name: "Server Network"
+  #     range: 10.0.0.0/24
+  #     interval: 1800
+  #     options: "-sn -T5"
+
+# =============================================================================
+# AUTO-DISCOVERY CONFIGURATION
+# =============================================================================
 discovery:
-  # Enable automatic host creation
+  # Enable automatic discovery
   enabled: true
 
   # Automatically add discovered hosts to Zabbix
   auto_add_hosts: true
 
-  # Automatically apply templates based on device type
+  # Automatically apply templates based on device type/OS
   auto_apply_templates: true
 
-  # Default host groups for discovered hosts
+  # Default host groups for ALL discovered hosts
   default_groups:
     - "Discovered hosts"
     - "PlugMonitor"
     - "Network/LAN"
 
-  # Check interval for new scan results (seconds)
+  # Check interval for processing new scan results (seconds)
   check_interval: 60
 
   # Template mapping rules
-  # Maps device types and OS to Zabbix templates
+  # Maps detected OS/device type to Zabbix templates
   template_mapping:
     windows:
       - "Windows by Zabbix agent active"
-      - "Windows services"
+      # - "Windows services"  # Uncomment if template exists
 
     linux:
       - "Linux by Zabbix agent active"
-      - "Linux filesystems"
+      # - "Linux filesystems"  # Uncomment if template exists
 
     macos:
       - "macOS by Zabbix agent active"
 
     network_device:
       - "Generic SNMP"
-      - "Network interfaces SNMP"
+      # - "Network interfaces SNMP"  # Uncomment if template exists
 
     printer:
       - "Generic SNMP"
-      - "Printer SNMP"
+      # - "Printer SNMP"  # Uncomment if template exists
 
     server:
       - "Linux by Zabbix agent active"
@@ -90,6 +127,7 @@ discovery:
       - "ICMP Ping"
 
   # Host group mapping by device type
+  # Additional groups added based on detected device type
   group_mapping:
     server: ["Servers", "Linux servers"]
     workstation: ["Workstations"]
@@ -97,11 +135,11 @@ discovery:
     printer: ["Printers"]
     iot: ["IoT devices"]
 
-  # Interface configuration
+  # Interface configuration for new hosts
   interface:
     type: 1              # 1=Agent, 2=SNMP, 3=IPMI, 4=JMX
     port: 10050          # Zabbix agent port
-    useip: 1             # Use IP address
+    useip: 1             # 1=Use IP, 0=Use DNS
     dns: ""              # DNS name (empty if using IP)
 
   # Inventory settings
@@ -109,91 +147,93 @@ discovery:
     mode: 0              # 0=Manual, 1=Automatic
     populate: true       # Auto-populate from scan data
 
-# Dashboard Configuration
+# =============================================================================
+# WEB DASHBOARD CONFIGURATION
+# =============================================================================
 dashboard:
-  # Listen address (0.0.0.0 = all interfaces)
+  # Listen address
+  # 0.0.0.0 = all interfaces (accessible from network)
+  # 127.0.0.1 = localhost only (accessible only from RPi)
   host: 0.0.0.0
 
   # Web interface port
   port: 8080
 
-  # Admin credentials
+  # Admin credentials for dashboard
+  # CHANGE THESE IMMEDIATELY!
   admin_user: admin
   admin_password: changeme
 
-  # Secret key for sessions (generate with: openssl rand -hex 32)
-  secret_key: change-this-to-random-string
+  # Secret key for session encryption
+  # Generate new one with: openssl rand -hex 32
+  # CRITICAL: Change this to a random string!
+  secret_key: change-this-to-random-string-generated-by-openssl-rand
 
-# Automation Level
+# =============================================================================
+# AUTOMATION LEVEL
+# =============================================================================
 # 1 = Basic (ICMP + SNMP only, no agents)
+#     - Simple ping monitoring
+#     - SNMP for network devices
+#     - No detailed metrics
+#
 # 2 = Semi-Auto (+ Agent deployment scripts available)
+#     - Everything from Level 1
+#     - Agent deployment tools (PowerShell, Ansible)
+#     - Detailed host metrics when agents installed
+#     - PSK encryption support
+#
 # 3 = Full Auto (+ AD integration, GPO deployment)
+#     - Everything from Level 2
+#     - Active Directory synchronization
+#     - Automatic GPO-based agent deployment
+#     - Enterprise features
+
 automation_level: 2
 
-# Active Directory Integration (Level 3 only)
+# =============================================================================
+# ACTIVE DIRECTORY INTEGRATION (Level 3 only)
+# =============================================================================
 active_directory:
+  # Enable AD integration
   enabled: false
 
-  # AD Server
+  # AD Server settings
   server: dc.example.com
   port: 389
-  use_ssl: false
+  use_ssl: false         # Set to true for LDAPS (port 636)
 
-  # Bind credentials
-  bind_dn: "CN=ServiceAccount,OU=Service,DC=example,DC=com"
-  bind_password: password
+  # Service account credentials
+  # This account needs read access to computer objects
+  bind_dn: "CN=ZabbixService,OU=ServiceAccounts,DC=example,DC=com"
+  bind_password: "YourSecurePassword"
 
-  # Base DN for computer search
+  # Search base for computer objects
   base_dn: "OU=Computers,DC=example,DC=com"
 
-  # LDAP filter for computers
+  # LDAP search filter
+  # Default: all computers
   search_filter: "(objectClass=computer)"
 
-  # Sync interval (seconds)
-  sync_interval: 3600
+  # Only enabled computers:
+  # search_filter: "(&(objectClass=computer)(!(userAccountControl:1.2.840.113556.1.4.803:=2)))"
 
-  # Auto-import computers from AD
+  # Only Windows servers:
+  # search_filter: "(&(objectClass=computer)(operatingSystem=*Server*))"
+
+  # Synchronization settings
+  sync_interval: 3600    # seconds (1 hour)
   auto_import: true
 
-# Logging Configuration
-logging:
-  # Log level: DEBUG, INFO, WARNING, ERROR, CRITICAL
-  level: INFO
+  # Cleanup inactive hosts
+  remove_inactive: false
+  inactive_days: 90
 
-  # Log file location
-  file: /var/log/plug-monitor/plug-monitor.log
-
-  # Max log file size (bytes)
-  max_size: 10485760  # 10MB
-
-  # Number of backup files to keep
-  backup_count: 5
-
-  # Log format
-  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-
-# Advanced Settings
-advanced:
-  # API request timeout (seconds)
-  api_timeout: 10
-
-  # Retry failed API calls
-  api_retry: true
-  api_retry_count: 3
-  api_retry_delay: 5
-
-  # Rate limiting for API calls (calls per minute)
-  api_rate_limit: 60
-
-  # Database for tracking processed hosts
-  processed_hosts_db: /opt/plug-monitor/data/processed_hosts.json
-
-  # Scan results directory
-  scan_data_dir: /opt/plug-monitor/data/scans
-
-# PSK Encryption Settings (for agent communication)
+# =============================================================================
+# PSK ENCRYPTION SETTINGS
+# =============================================================================
 psk:
-  # Enable PSK encryption
+  # Enable PSK encryption for agent communication
   enabled: true
 
   # Auto-generate PSK keys for new hosts
@@ -205,28 +245,89 @@ psk:
   # Key storage directory
   key_dir: /opt/plug-monitor/data/keys
 
-# Notification Settings
+# =============================================================================
+# LOGGING CONFIGURATION
+# =============================================================================
+logging:
+  # Log level: DEBUG, INFO, WARNING, ERROR, CRITICAL
+  level: INFO
+
+  # Log file location
+  file: /var/log/plug-monitor/plug-monitor.log
+
+  # Max log file size in bytes (10MB default)
+  max_size: 10485760
+
+  # Number of backup files to keep
+  backup_count: 5
+
+  # Log format
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+
+# =============================================================================
+# ADVANCED SETTINGS
+# =============================================================================
+advanced:
+  # API request timeout (seconds)
+  api_timeout: 10
+
+  # Retry failed API calls
+  api_retry: true
+  api_retry_count: 3
+  api_retry_delay: 5
+
+  # Rate limiting for API calls (calls per minute)
+  # Prevents overwhelming Zabbix Server
+  api_rate_limit: 60
+
+  # Database for tracking processed hosts
+  processed_hosts_db: /opt/plug-monitor/data/processed_hosts.json
+
+  # Scan results directory
+  scan_data_dir: /opt/plug-monitor/data/scans
+
+# =============================================================================
+# NOTIFICATION SETTINGS (Optional)
+# =============================================================================
 notifications:
   # Enable notifications
   enabled: false
 
-  # Telegram
+  # Telegram notifications
   telegram:
     enabled: false
     bot_token: ""
     chat_id: ""
 
-  # Slack
+  # Slack notifications
   slack:
     enabled: false
     webhook_url: ""
 
-  # Email
+  # Email notifications
   email:
     enabled: false
     smtp_server: smtp.gmail.com
     smtp_port: 587
+    use_tls: true
     username: ""
     password: ""
     from_addr: ""
     to_addrs: []
+
+# =============================================================================
+# PERFORMANCE TUNING (Advanced users only)
+# =============================================================================
+performance:
+  # Maximum concurrent scans
+  max_concurrent_scans: 1
+
+  # Scan timeout (seconds)
+  scan_timeout: 300
+
+  # API call batch size
+  api_batch_size: 100
+
+  # Cache settings
+  cache_enabled: true
+  cache_ttl: 300  # seconds
