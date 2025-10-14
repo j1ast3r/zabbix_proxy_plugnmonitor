@@ -1,5 +1,5 @@
-# Plug & Monitor - Main Configuration File
-# Copy to /opt/plug-monitor/config/config.yml and edit
+# Plug & Monitor - Configuration Example
+# Copy this file to /opt/plug-monitor/config/config.yml and edit
 
 # =============================================================================
 # ZABBIX SERVER CONFIGURATION
@@ -28,6 +28,7 @@ zabbix:
 
   # Proxy Configuration
   # This name MUST match the proxy name in Zabbix Server frontend
+  # IMPORTANT: Proxy is REQUIRED for monitoring remote networks!
   proxy_name: PlugMonitor-Proxy-RPI001
 
 # =============================================================================
@@ -37,7 +38,7 @@ network:
   # Network range to scan in CIDR notation
   # Examples:
   #   Single network: 192.168.1.0/24
-  #   Multiple networks: ["192.168.1.0/24", "192.168.2.0/24", "10.0.0.0/24"]
+  #   Multiple networks: ["192.168.1.0/24", "192.168.2.0/24"]
   scan_range: 192.168.1.0/24
 
   # Scan interval in seconds
@@ -47,7 +48,6 @@ network:
   # Nmap options for scanning
   # -sn: Ping scan (no port scan) - fastest
   # -T4: Aggressive timing
-  # -PE -PP -PS22,80,443: Additional ping methods
   # IMPORTANT: Don't use -O (OS detection) in regular scans - too slow!
   nmap_options: "-sn -T4"
 
@@ -56,19 +56,6 @@ network:
     - 192.168.1.1      # Router/Gateway
     - 192.168.1.10     # Zabbix Server
     - 192.168.1.100    # This Raspberry Pi
-
-  # Advanced: Multiple network configurations
-  # Uncomment to use different settings for different networks
-  # scan_configs:
-  #   - name: "Office Network"
-  #     range: 192.168.1.0/24
-  #     interval: 3600
-  #     options: "-sn -T4"
-  #
-  #   - name: "Server Network"
-  #     range: 10.0.0.0/24
-  #     interval: 1800
-  #     options: "-sn -T5"
 
 # =============================================================================
 # AUTO-DISCOVERY CONFIGURATION
@@ -87,44 +74,45 @@ discovery:
   default_groups:
     - "Discovered hosts"
     - "PlugMonitor"
-    - "Network/LAN"
 
   # Check interval for processing new scan results (seconds)
   check_interval: 60
 
   # Template mapping rules
-  # Maps detected OS/device type to Zabbix templates
+  # IMPORTANT: Use EXACT template names from your Zabbix server!
+  # Check in: Data collection → Templates
   template_mapping:
+    # Windows computers
     windows:
-      - "Windows by Zabbix agent active"
-      # - "Windows services"  # Uncomment if template exists
+      - "Template OS Windows"
 
+    # Linux servers/workstations
     linux:
-      - "Linux by Zabbix agent active"
-      # - "Linux filesystems"  # Uncomment if template exists
+      - "Template OS Linux"
 
-    macos:
-      - "macOS by Zabbix agent active"
-
+    # Network devices (switches, routers)
     network_device:
-      - "Generic SNMP"
-      # - "Network interfaces SNMP"  # Uncomment if template exists
+      - "Template Net Network Generic Device SNMPv2"
 
+    # Printers
     printer:
-      - "Generic SNMP"
-      # - "Printer SNMP"  # Uncomment if template exists
+      - "Template Module Generic SNMPv2"
 
+    # Servers (if OS unknown)
     server:
-      - "Linux by Zabbix agent active"
+      - "Template OS Linux"
 
+    # Workstations (if OS unknown)
     workstation:
-      - "ICMP Ping"
+      - "Template Module ICMP Ping"
 
+    # IoT devices
     iot:
-      - "ICMP Ping"
+      - "Template Module ICMP Ping"
 
+    # Unknown devices (fallback)
     unknown:
-      - "ICMP Ping"
+      - "Template Module ICMP Ping"
 
   # Host group mapping by device type
   # Additional groups added based on detected device type
@@ -234,10 +222,10 @@ active_directory:
 # =============================================================================
 psk:
   # Enable PSK encryption for agent communication
-  enabled: true
+  enabled: false
 
   # Auto-generate PSK keys for new hosts
-  auto_generate: true
+  auto_generate: false
 
   # PSK key length (256 or 512 bits)
   key_length: 256

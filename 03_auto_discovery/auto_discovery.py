@@ -2,7 +2,7 @@
 """
 Auto-Discovery Daemon for Plug & Monitor
 Automatically adds discovered hosts to Zabbix Server via API
-FIXED: Support for both API Token and Username/Password authentication
+FINAL VERSION: Fixed proxy_id issue, correct template names, proper auth handling
 """
 
 import json
@@ -176,7 +176,7 @@ class ZabbixAPI:
             logger.error(f"Error checking host existence: {e}")
             return False
 
-    def create_host(self, host_data: Dict, proxy_id: str, group_ids: List[Dict],
+    def create_host(self, host_data: Dict, proxy_id: Optional[str], group_ids: List[Dict],
                     template_ids: List[str]) -> Optional[str]:
         """Create host in Zabbix"""
         try:
@@ -203,9 +203,11 @@ class ZabbixAPI:
                 }]
             }
 
-            # Add proxy if specified
-            if proxy_id:
+            # FIXED: Only add proxy if it's valid (not None and not 0)
+            # Otherwise hosts are monitored by server directly
+            if proxy_id and proxy_id != '0':
                 params['proxyid'] = proxy_id
+            # If proxy_id is None or '0', don't add proxyid parameter at all
 
             # Add templates if specified
             if template_ids:
@@ -288,7 +290,6 @@ class AutoDiscovery:
             api_password = zabbix_config.get('api_password', '').strip()
 
             # CRITICAL FIX: Only use token if it's not empty
-            # If token is empty string or None, use username/password instead
             use_token = bool(api_token)
 
             # Create API client with appropriate authentication
@@ -302,12 +303,16 @@ class AutoDiscovery:
             if not self.zapi.login():
                 return False
 
-            # Get proxy ID
-            proxy_name = zabbix_config['proxy_name']
-            self.proxy_id = self.zapi.get_proxy_id(proxy_name)
-
-            if not self.proxy_id:
-                logger.warning(f"Proxy '{proxy_name}' not found in Zabbix. Hosts will be monitored by server.")
+            # Get proxy ID (optional - if proxy not found, hosts monitored by server)
+            proxy_name = zabbix_config.get('proxy_name', '')
+            if proxy_name:
+                self.proxy_id = self.zapi.get_proxy_id(proxy_name)
+                if not self.proxy_id:
+                    logger.warning(f"Proxy '{proxy_name}' not found. Hosts will be monitored by server directly.")
+                    self.proxy_id = None
+            else:
+                logger.info("No proxy configured. Hosts will be monitored by server directly.")
+                self.proxy_id = None
 
             return True
 
@@ -326,21 +331,28 @@ class AutoDiscovery:
 
         # Template mapping logic
         if 'Linux' in os_guess:
-            template_names = template_mapping.get('linux', ['Linux by Zabbix agent active'])
+            template_names = template_mapping.get('linux', ['Template OS Linux'])
             for template_name in template_names:
                 template_id = self.zapi.get_template_id(template_name)
                 if template_id:
                     templates.append(template_id)
 
         elif 'Windows' in os_guess:
-            template_names = template_mapping.get('windows', ['Windows by Zabbix agent active'])
+            template_names = template_mapping.get('windows', ['Template OS Windows'])
             for template_name in template_names:
                 template_id = self.zapi.get_template_id(template_name)
                 if template_id:
                     templates.append(template_id)
 
         elif device_type == 'network_device':
-            template_names = template_mapping.get('network_device', ['Generic SNMP'])
+            template_names = template_mapping.get('network_device', ['Template Net Network Generic Device SNMPv2'])
+            for template_name in template_names:
+                template_id = self.zapi.get_template_id(template_name)
+                if template_id:
+                    templates.append(template_id)
+
+        elif device_type == 'printer':
+            template_names = template_mapping.get('printer', ['Template Module Generic SNMPv2'])
             for template_name in template_names:
                 template_id = self.zapi.get_template_id(template_name)
                 if template_id:
@@ -348,9 +360,11 @@ class AutoDiscovery:
 
         # Fallback to ICMP if no specific template
         if not templates:
-            template_id = self.zapi.get_template_id('ICMP Ping')
-            if template_id:
-                templates.append(template_id)
+            fallback_names = template_mapping.get('unknown', ['Template Module ICMP Ping'])
+            for template_name in fallback_names:
+                template_id = self.zapi.get_template_id(template_name)
+                if template_id:
+                    templates.append(template_id)
 
         return templates
 
@@ -388,10 +402,10 @@ class AutoDiscovery:
                 # Get templates
                 template_ids = self.get_template_for_host(host)
 
-                # Create host
+                # Create host WITH PROXY (for remote monitoring)
                 host_id = self.zapi.create_host(
                     host_data=host,
-                    proxy_id=self.proxy_id,
+                    proxy_id=self.proxy_id,  # Use proxy for monitoring
                     group_ids=group_ids,
                     template_ids=template_ids
                 )
