@@ -1,0 +1,117 @@
+# Plug & Monitor - Main Configuration
+# Copy to /opt/plug-monitor/config/config.yml and edit
+
+zabbix:
+  server: 192.168.1.10
+  server_port: 10051
+  api_url: http://192.168.1.10/api_jsonrpc.php
+
+  # API Token (Zabbix 7.0+) - recommended
+  api_token: ""
+
+  # OR Username/Password (legacy)
+  api_user: Admin
+  api_password: zabbix
+
+  proxy_name: PlugMonitor-Proxy-RPI001
+
+network:
+  scan_range: 192.168.1.0/24
+  scan_interval: 3600
+  nmap_options: "-sn -T4"
+  exclude_ips:
+    - 192.168.1.1      # Gateway
+    - 192.168.1.10     # Zabbix Server
+
+discovery:
+  enabled: true
+  auto_add_hosts: true
+  auto_apply_templates: true
+
+  default_groups:
+    - "Discovered hosts"
+    - "PlugMonitor"
+
+  check_interval: 60
+
+  # CRITICAL: Use exact template names from Zabbix 7.0 LTS
+  template_mapping:
+    windows:
+      - "Windows by Zabbix agent active"
+    linux:
+      - "Linux by Zabbix agent active"
+    network_device:
+      - "Generic SNMP"
+    printer:
+      - "Generic SNMP"
+    server:
+      - "Linux by Zabbix agent active"
+    workstation:
+      - "ICMP Ping"
+    iot:
+      - "ICMP Ping"
+    unknown:
+      - "ICMP Ping"
+
+dashboard:
+  host: 0.0.0.0
+  port: 8080
+  admin_user: admin
+  admin_password: changeme
+  secret_key: change-this-to-random-string
+
+automation_level: 2
+
+logging:
+  level: INFO
+  file: /var/log/plug-monitor/plug-monitor.log
+  max_size: 10485760
+  backup_count: 5
+```
+
+---
+
+### 5. Обновленный `.gitignore`
+
+Обнови файл: `.gitignore`
+```
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+*.egg-info/
+dist/
+build/
+
+# PyCharm
+.idea/
+*.iml
+
+# Config files with sensitive data
+config.yml
+!config.yml.example
+*.psk
+
+# Data
+data/
+scans/
+keys/
+backups/
+
+# Logs
+*.log
+
+# Temporary
+*.tmp
+.DS_Store
+
+# Secrets
+.env
+
+# OS
+Thumbs.db

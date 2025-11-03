@@ -79,40 +79,41 @@ discovery:
   check_interval: 60
 
   # Template mapping rules
-  # IMPORTANT: Use EXACT template names from your Zabbix server!
-  # Check in: Data collection → Templates
+  # CRITICAL: Use EXACT template names from Zabbix 7.0 LTS!
+  # These are the correct out-of-the-box template names in Zabbix 7.0 LTS
+  # Check in your Zabbix: Data collection → Templates
   template_mapping:
-    # Windows computers
+    # Windows computers - uses Zabbix agent active
     windows:
-      - "Template OS Windows"
+      - "Windows by Zabbix agent active"
 
-    # Linux servers/workstations
+    # Linux servers/workstations - uses Zabbix agent active
     linux:
-      - "Template OS Linux"
+      - "Linux by Zabbix agent active"
 
-    # Network devices (switches, routers)
+    # Network devices (switches, routers) - uses SNMP
     network_device:
-      - "Template Net Network Generic Device SNMPv2"
+      - "Generic SNMP"
 
-    # Printers
+    # Printers - uses SNMP
     printer:
-      - "Template Module Generic SNMPv2"
+      - "Generic SNMP"
 
-    # Servers (if OS unknown)
+    # Servers (if OS unknown but detected as server)
     server:
-      - "Template OS Linux"
+      - "Linux by Zabbix agent active"
 
     # Workstations (if OS unknown)
     workstation:
-      - "Template Module ICMP Ping"
+      - "ICMP Ping"
 
     # IoT devices
     iot:
-      - "Template Module ICMP Ping"
+      - "ICMP Ping"
 
-    # Unknown devices (fallback)
+    # Unknown devices (fallback) - basic ping monitoring
     unknown:
-      - "Template Module ICMP Ping"
+      - "ICMP Ping"
 
   # Host group mapping by device type
   # Additional groups added based on detected device type

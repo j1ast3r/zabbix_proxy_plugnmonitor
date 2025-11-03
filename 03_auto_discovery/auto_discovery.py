@@ -331,28 +331,28 @@ class AutoDiscovery:
 
         # Template mapping logic
         if 'Linux' in os_guess:
-            template_names = template_mapping.get('linux', ['Template OS Linux'])
+            template_names = template_mapping.get('linux', ['Linux by Zabbix agent active'])
             for template_name in template_names:
                 template_id = self.zapi.get_template_id(template_name)
                 if template_id:
                     templates.append(template_id)
 
         elif 'Windows' in os_guess:
-            template_names = template_mapping.get('windows', ['Template OS Windows'])
+            template_names = template_mapping.get('windows', ['Windows by Zabbix agent active'])
             for template_name in template_names:
                 template_id = self.zapi.get_template_id(template_name)
                 if template_id:
                     templates.append(template_id)
 
         elif device_type == 'network_device':
-            template_names = template_mapping.get('network_device', ['Template Net Network Generic Device SNMPv2'])
+            template_names = template_mapping.get('network_device', ['Generic SNMP'])
             for template_name in template_names:
                 template_id = self.zapi.get_template_id(template_name)
                 if template_id:
                     templates.append(template_id)
 
         elif device_type == 'printer':
-            template_names = template_mapping.get('printer', ['Template Module Generic SNMPv2'])
+            template_names = template_mapping.get('printer', ['Generic SNMP'])
             for template_name in template_names:
                 template_id = self.zapi.get_template_id(template_name)
                 if template_id:
@@ -360,7 +360,7 @@ class AutoDiscovery:
 
         # Fallback to ICMP if no specific template
         if not templates:
-            fallback_names = template_mapping.get('unknown', ['Template Module ICMP Ping'])
+            fallback_names = template_mapping.get('unknown', ['ICMP Ping'])
             for template_name in fallback_names:
                 template_id = self.zapi.get_template_id(template_name)
                 if template_id:

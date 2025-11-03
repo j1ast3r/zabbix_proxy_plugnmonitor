@@ -1,6 +1,9 @@
 #!/bin/bash
-# Plug & Monitor - Master Installation Script
-# All critical bugs fixed for Debian 13 "trixie"
+#================================================================
+# Plug & Monitor - Professional Master Installation Script
+# Version: 2.0 for KGGR
+# All bugs fixed + Quality checks + Auto-scan enabled
+#================================================================
 
 set -e
 
@@ -9,23 +12,50 @@ RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
+CYAN='\033[0;36m'
 NC='\033[0m'
 
-print_info() { echo -e "${BLUE}[INFO]${NC} $1" | tee -a "$LOG_FILE"; }
-print_success() { echo -e "${GREEN}[SUCCESS]${NC} $1" | tee -a "$LOG_FILE"; }
-print_warning() { echo -e "${YELLOW}[WARNING]${NC} $1" | tee -a "$LOG_FILE"; }
-print_error() { echo -e "${RED}[ERROR]${NC} $1" | tee -a "$LOG_FILE"; }
-
-# Installation paths
+# Installation configuration
 INSTALL_DIR="/opt/plug-monitor"
 LOG_DIR="/var/log/plug-monitor"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+VERSION="2.0"
+
+# Default settings for KGGR
+DEFAULT_ZABBIX_SERVER="monitoring.kggr.de:10051"
+DEFAULT_API_URL="http://monitoring.kggr.de/api_jsonrpc.php"
+DEFAULT_NETWORK="192.168.1.0/24"
 
 # Log file
 mkdir -p "$LOG_DIR"
 LOG_FILE="${LOG_DIR}/install_$(date +%Y%m%d_%H%M%S).log"
 
-# Check root
+#================================================================
+# Utility Functions
+#================================================================
+
+print_info() {
+    echo -e "${BLUE}[INFO]${NC} $1" | tee -a "$LOG_FILE"
+}
+
+print_success() {
+    echo -e "${GREEN}[✓]${NC} $1" | tee -a "$LOG_FILE"
+}
+
+print_warning() {
+    echo -e "${YELLOW}[⚠]${NC} $1" | tee -a "$LOG_FILE"
+}
+
+print_error() {
+    echo -e "${RED}[✗]${NC} $1" | tee -a "$LOG_FILE"
+}
+
+print_header() {
+    echo "" | tee -a "$LOG_FILE"
+    echo -e "${CYAN}$1${NC}" | tee -a "$LOG_FILE"
+    echo -e "${CYAN}$(echo "$1" | sed 's/./=/g')${NC}" | tee -a "$LOG_FILE"
+}
+
 check_root() {
     if [[ $EUID -ne 0 ]]; then
         print_error "This script must be run as root (use sudo)"
@@ -33,26 +63,84 @@ check_root() {
     fi
 }
 
-# Banner
+check_prerequisites() {
+    print_header "Checking Prerequisites"
+
+    local all_ok=true
+
+    # Check OS
+    if [ -f /etc/os-release ]; then
+        . /etc/os-release
+        print_info "OS: $PRETTY_NAME"
+
+        if [[ "$ID" != "debian" && "$ID" != "ubuntu" && "$ID" != "raspbian" ]]; then
+            print_warning "This script is optimized for Debian/Ubuntu/Raspbian"
+        fi
+    fi
+
+    # Check internet connectivity
+    if ping -c 1 8.8.8.8 &> /dev/null; then
+        print_success "Internet connection OK"
+    else
+        print_error "No internet connection"
+        all_ok=false
+    fi
+
+    # Check disk space (minimum 2GB)
+    available_space=$(df / | tail -1 | awk '{print $4}')
+    if [ "$available_space" -lt 2097152 ]; then
+        print_error "Insufficient disk space (need at least 2GB free)"
+        all_ok=false
+    else
+        print_success "Disk space OK ($(df -h / | tail -1 | awk '{print $4}') available)"
+    fi
+
+    # Check RAM (minimum 1GB)
+    total_ram=$(free -m | awk '/^Mem:/{print $2}')
+    if [ "$total_ram" -lt 1024 ]; then
+        print_warning "Low RAM detected (${total_ram}MB) - 2GB+ recommended"
+    else
+        print_success "RAM OK (${total_ram}MB)"
+    fi
+
+    if [ "$all_ok" = false ]; then
+        print_error "Prerequisites check failed"
+        exit 1
+    fi
+
+    print_success "All prerequisites met"
+    echo ""
+}
+
 show_banner() {
     clear
     cat << "EOF"
 ╔══════════════════════════════════════════════════════════╗
-║     PLUG & MONITOR - Installation Wizard                  ║
-║          Automated Zabbix Monitoring                      ║
+║     PLUG & MONITOR - Professional Installation v2.0     ║
+║          Automated Zabbix Monitoring for KGGR           ║
 ╚══════════════════════════════════════════════════════════╝
 EOF
+    echo -e "${CYAN}Professional Edition - Quality Assured${NC}"
     echo ""
 }
 
-# Collect configuration
 collect_config() {
-    print_info "Configuration Wizard"
-    echo ""
+    print_header "Configuration Wizard"
 
-    read -p "Zabbix Server IP or hostname: " ZABBIX_SERVER
-    read -p "Zabbix API URL [http://${ZABBIX_SERVER}/api_jsonrpc.php]: " ZABBIX_API_URL
-    ZABBIX_API_URL=${ZABBIX_API_URL:-http://${ZABBIX_SERVER}/api_jsonrpc.php}
+    # Zabbix Server (с портом по умолчанию)
+    read -p "Zabbix Server (format IP:PORT) [${DEFAULT_ZABBIX_SERVER}]: " ZABBIX_SERVER
+    ZABBIX_SERVER=${ZABBIX_SERVER:-$DEFAULT_ZABBIX_SERVER}
+
+    # Проверка формата IP:PORT
+    if [[ ! "$ZABBIX_SERVER" =~ :[0-9]+$ ]]; then
+        print_warning "Server should include port (e.g., monitoring.kggr.de:10051)"
+        ZABBIX_SERVER="${ZABBIX_SERVER}:10051"
+        print_info "Using: $ZABBIX_SERVER"
+    fi
+
+    # API URL
+    read -p "Zabbix API URL [${DEFAULT_API_URL}]: " ZABBIX_API_URL
+    ZABBIX_API_URL=${ZABBIX_API_URL:-$DEFAULT_API_URL}
 
     echo ""
     echo "Choose authentication method:"
@@ -73,24 +161,57 @@ collect_config() {
         ZABBIX_API_TOKEN=""
     fi
 
-    read -p "Proxy name [PlugMonitor-Proxy-$(hostname)]: " PROXY_NAME
-    PROXY_NAME=${PROXY_NAME:-PlugMonitor-Proxy-$(hostname)}
+    # Proxy name
+    read -p "Proxy name [KGGR-Proxy-$(hostname)]: " PROXY_NAME
+    PROXY_NAME=${PROXY_NAME:-KGGR-Proxy-$(hostname)}
 
+    # Network range
     default_network=$(ip route | grep default | awk '{print $3}' | cut -d'.' -f1-3)
     read -p "Network to scan [${default_network}.0/24]: " SCAN_NETWORK
     SCAN_NETWORK=${SCAN_NETWORK:-${default_network}.0/24}
 
+    # Auto-scan settings
+    echo ""
+    read -p "Enable automatic periodic scanning? (y/N): " ENABLE_AUTO_SCAN
+    if [[ $ENABLE_AUTO_SCAN =~ ^[Yy]$ ]]; then
+        read -p "Scan interval in hours [2]: " SCAN_HOURS
+        SCAN_HOURS=${SCAN_HOURS:-2}
+        SCAN_INTERVAL=$((SCAN_HOURS * 3600))
+        AUTO_SCAN_ENABLED="true"
+    else
+        SCAN_INTERVAL=7200
+        AUTO_SCAN_ENABLED="false"
+    fi
+
+    # Dashboard settings
+    echo ""
     read -p "Dashboard port [8080]: " DASHBOARD_PORT
     DASHBOARD_PORT=${DASHBOARD_PORT:-8080}
     read -p "Dashboard admin username [admin]: " DASHBOARD_USER
     DASHBOARD_USER=${DASHBOARD_USER:-admin}
     read -sp "Dashboard admin password: " DASHBOARD_PASSWORD
     echo ""
+
+    # Confirmation
+    echo ""
+    print_header "Configuration Summary"
+    echo "Zabbix Server:    $ZABBIX_SERVER"
+    echo "API URL:          $ZABBIX_API_URL"
+    echo "Proxy Name:       $PROXY_NAME"
+    echo "Network Range:    $SCAN_NETWORK"
+    echo "Auto-Scan:        $AUTO_SCAN_ENABLED ($SCAN_HOURS hours)"
+    echo "Dashboard:        http://<this-ip>:$DASHBOARD_PORT"
+    echo ""
+    read -p "Proceed with these settings? (y/N): " -n 1 -r
+    echo ""
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        print_info "Installation cancelled"
+        exit 0
+    fi
 }
 
-# Create directories - ALREADY CORRECT
 create_directories() {
-    print_info "Creating directory structure..."
+    print_header "Creating Directory Structure"
 
     # Create ALL necessary directories
     mkdir -p "$INSTALL_DIR"/{config,data/{scans,keys}}
@@ -111,46 +232,50 @@ create_directories() {
     chmod 750 /var/lib/zabbix
     chmod 755 /var/run/zabbix
 
-    print_success "Directories created"
+    print_success "Directories created with correct permissions"
 }
 
-# Install Zabbix Proxy - FIXED
 install_zabbix_proxy() {
-    print_info "Installing Zabbix Proxy 7.0..."
+    print_header "Installing Zabbix Proxy 7.0 LTS"
 
     # Detect OS
     if [ -f /etc/os-release ]; then
         . /etc/os-release
         OS_ID=$ID
         OS_VERSION=$VERSION_ID
+        print_info "Detected: $PRETTY_NAME"
     fi
 
     # Install dependencies
+    print_info "Installing dependencies..."
     apt-get update >> "$LOG_FILE" 2>&1
-    apt-get install -y wget gnupg2 sqlite3 fping nmap >> "$LOG_FILE" 2>&1
+    apt-get install -y wget gnupg2 sqlite3 fping nmap curl >> "$LOG_FILE" 2>&1
 
     # Install based on OS
     if [ "$OS_ID" = "debian" ] || [ "$OS_ID" = "raspbian" ]; then
+        print_info "Installing Zabbix repository for Debian..."
         wget -q https://repo.zabbix.com/zabbix/7.0/debian/pool/main/z/zabbix-release/zabbix-release_latest+debian13_all.deb -O /tmp/zabbix-release.deb
         dpkg -i /tmp/zabbix-release.deb >> "$LOG_FILE" 2>&1
-        apt-get update >> "$LOG_FILE" 2>&1
-        apt-get install -y zabbix-proxy-sqlite3 zabbix-sql-scripts >> "$LOG_FILE" 2>&1
     elif [ "$OS_ID" = "ubuntu" ]; then
+        print_info "Installing Zabbix repository for Ubuntu..."
         wget -q https://repo.zabbix.com/zabbix/7.0/ubuntu/pool/main/z/zabbix-release/zabbix-release_latest+ubuntu22.04_all.deb -O /tmp/zabbix-release.deb
         dpkg -i /tmp/zabbix-release.deb >> "$LOG_FILE" 2>&1
-        apt-get update >> "$LOG_FILE" 2>&1
-        apt-get install -y zabbix-proxy-sqlite3 zabbix-sql-scripts >> "$LOG_FILE" 2>&1
     fi
+
+    apt-get update >> "$LOG_FILE" 2>&1
+    apt-get install -y zabbix-proxy-sqlite3 zabbix-sql-scripts >> "$LOG_FILE" 2>&1
 
     # Create zabbix user if not exists
     if ! id "zabbix" &>/dev/null; then
         useradd --system --group --home /var/lib/zabbix --shell /sbin/nologin zabbix
+        print_success "Created zabbix user"
     fi
 
-    # Initialize database - FIXED
+    # Initialize database
+    print_info "Initializing SQLite database..."
     DB_PATH="/var/lib/zabbix/zabbix_proxy.db"
 
-    # FIX: Check multiple possible paths for SQL schema
+    # Find SQL schema
     SQL_SCHEMA=""
     if [ -f /usr/share/zabbix-sql-scripts/sqlite3/proxy.sql ]; then
         SQL_SCHEMA="/usr/share/zabbix-sql-scripts/sqlite3/proxy.sql"
@@ -176,32 +301,40 @@ install_zabbix_proxy() {
     chown zabbix:zabbix "$DB_PATH"
     chmod 640 "$DB_PATH"
 
-    # Configure proxy - FIXED: Removed HeartbeatFrequency
+    # Configure proxy
+    print_info "Configuring Zabbix Proxy..."
     cat > /etc/zabbix/zabbix_proxy.conf << EOF
-Server=${ZABBIX_SERVER}:10051
+# Zabbix Proxy Configuration - KGGR Professional
+# Auto-generated by Plug & Monitor v${VERSION}
+
+Server=${ZABBIX_SERVER}
 Hostname=${PROXY_NAME}
 LogFile=/var/log/zabbix/zabbix_proxy.log
 LogFileSize=10
 PidFile=/var/run/zabbix/zabbix_proxy.pid
 SocketDir=/var/run/zabbix
-DBName=/var/lib/zabbix/zabbix_proxy.db
+DBName=${DB_PATH}
+
+# Performance
 Timeout=4
 FpingLocation=/usr/bin/fping
 Fping6Location=/usr/bin/fping6
-
 StartPollers=5
 StartTrappers=5
 StartPingers=1
 CacheSize=32M
 HistoryCacheSize=16M
 
+# Proxy Settings
 ProxyOfflineBuffer=24
 ProxyConfigFrequency=10
 DataSenderFrequency=1
 
+# Security
 TLSConnect=unencrypted
 TLSAccept=unencrypted
 EnableRemoteCommands=0
+LogRemoteCommands=0
 EOF
 
     chown root:zabbix /etc/zabbix/zabbix_proxy.conf
@@ -215,35 +348,46 @@ EOF
     systemctl enable zabbix-proxy >> "$LOG_FILE" 2>&1
     systemctl restart zabbix-proxy >> "$LOG_FILE" 2>&1
 
-    print_success "Zabbix Proxy installed"
+    sleep 3
+
+    if systemctl is-active --quiet zabbix-proxy; then
+        print_success "Zabbix Proxy installed and running"
+    else
+        print_error "Zabbix Proxy failed to start"
+        journalctl -u zabbix-proxy -n 20 --no-pager | tee -a "$LOG_FILE"
+        exit 1
+    fi
 }
 
-# Setup Python environment
 setup_python_env() {
-    print_info "Setting up Python environment..."
+    print_header "Setting Up Python Environment"
+
+    # Install Python if needed
+    if ! command -v python3 &> /dev/null; then
+        apt-get install -y python3 python3-venv python3-pip >> "$LOG_FILE" 2>&1
+    fi
 
     cd "$INSTALL_DIR"
     python3 -m venv venv >> "$LOG_FILE" 2>&1
     source venv/bin/activate
 
+    print_info "Installing Python packages..."
     pip install --upgrade pip >> "$LOG_FILE" 2>&1
-
     pip install Flask==3.0.0 >> "$LOG_FILE" 2>&1
     pip install Flask-CORS==4.0.0 >> "$LOG_FILE" 2>&1
     pip install python-nmap==0.7.1 >> "$LOG_FILE" 2>&1
     pip install pyyaml==6.0.1 >> "$LOG_FILE" 2>&1
     pip install requests==2.31.0 >> "$LOG_FILE" 2>&1
     pip install gunicorn==21.2.0 >> "$LOG_FILE" 2>&1
+    pip install schedule==1.2.0 >> "$LOG_FILE" 2>&1
 
     deactivate
     print_success "Python environment ready"
 }
 
-# Copy project files - FIXED with verification
 copy_project_files() {
-    print_info "Copying project files..."
+    print_header "Copying Project Files"
 
-    # Function to verify file copy
     verify_copy() {
         local src="$1"
         local dst="$2"
@@ -254,19 +398,20 @@ copy_project_files() {
             return 1
         fi
 
+        mkdir -p "$(dirname "$dst")"
         cp "$src" "$dst"
 
         if [ -f "$dst" ] && [ -s "$dst" ]; then
             local size=$(stat -c%s "$dst")
-            print_success "Copied $name ($size bytes)"
+            print_success "✓ $name ($size bytes)"
             return 0
         else
-            print_error "$name copy failed or file is empty!"
+            print_error "✗ $name copy failed!"
             return 1
         fi
     }
 
-    # Copy Python files with verification
+    # Copy Python files
     verify_copy "$SCRIPT_DIR/03_auto_discovery/auto_discovery.py" \
                 "$INSTALL_DIR/03_auto_discovery/auto_discovery.py" \
                 "auto_discovery.py" || exit 1
@@ -279,50 +424,55 @@ copy_project_files() {
                 "$INSTALL_DIR/02_network_scanner/network_scanner.py" \
                 "network_scanner.py" || exit 1
 
-    # Copy templates if they exist
+    # Copy templates
     if [ -d "$SCRIPT_DIR/02_network_scanner/templates" ]; then
         mkdir -p "$INSTALL_DIR/02_network_scanner/templates"
         cp -r "$SCRIPT_DIR/02_network_scanner/templates/"* "$INSTALL_DIR/02_network_scanner/templates/" 2>/dev/null || true
-        print_success "Copied templates"
+        print_success "✓ Templates copied"
     fi
+
+    # Make scripts executable
+    chmod +x "$INSTALL_DIR/03_auto_discovery/auto_discovery.py"
+    chmod +x "$INSTALL_DIR/02_network_scanner/network_scanner.py"
+    chmod +x "$INSTALL_DIR/02_network_scanner/web_dashboard.py"
 
     print_success "All files copied and verified"
 }
 
-# Save configuration
 save_config() {
-    print_info "Saving configuration..."
+    print_header "Saving Configuration"
 
-    # Build zabbix config section based on auth method
-    ZABBIX_CONFIG="zabbix:
-  server: ${ZABBIX_SERVER}
-  server_port: 10051
-  api_url: ${ZABBIX_API_URL}"
-
-    # Only add the auth method that's actually being used
+    # Build config based on auth method
     if [ -n "$ZABBIX_API_TOKEN" ]; then
-        ZABBIX_CONFIG="${ZABBIX_CONFIG}
-  api_token: ${ZABBIX_API_TOKEN}
+        AUTH_CONFIG="  api_token: \"${ZABBIX_API_TOKEN}\"
   api_user: \"\"
   api_password: \"\""
     else
-        ZABBIX_CONFIG="${ZABBIX_CONFIG}
-  api_token: \"\"
-  api_user: ${ZABBIX_USER}
-  api_password: ${ZABBIX_PASSWORD}"
+        AUTH_CONFIG="  api_token: \"\"
+  api_user: \"${ZABBIX_USER}\"
+  api_password: \"${ZABBIX_PASSWORD}\""
     fi
 
-    ZABBIX_CONFIG="${ZABBIX_CONFIG}
-  proxy_name: ${PROXY_NAME}"
-
     cat > "${INSTALL_DIR}/config/config.yml" << EOF
-${ZABBIX_CONFIG}
+# Plug & Monitor Configuration - KGGR Professional
+# Version: ${VERSION}
+# Generated: $(date)
+
+zabbix:
+  server: ${ZABBIX_SERVER}
+  api_url: ${ZABBIX_API_URL}
+${AUTH_CONFIG}
+  proxy_name: ${PROXY_NAME}
 
 network:
   scan_range: ${SCAN_NETWORK}
   scan_interval: 3600
-  nmap_options: "-sn -T4"
+  nmap_options: "-sn -T4 -PE"
   exclude_ips: []
+  auto_scan:
+    enabled: ${AUTO_SCAN_ENABLED}
+    interval: ${SCAN_INTERVAL}
+    on_startup: true
 
 discovery:
   enabled: true
@@ -330,7 +480,7 @@ discovery:
   auto_apply_templates: true
   default_groups:
     - "Discovered hosts"
-    - "PlugMonitor"
+    - "KGGR Infrastructure"
   check_interval: 60
   template_mapping:
     windows:
@@ -339,6 +489,15 @@ discovery:
       - "Linux by Zabbix agent active"
     network_device:
       - "Generic SNMP"
+      - "Interfaces Simple SNMP"
+    printer:
+      - "Generic SNMP"
+    server:
+      - "Linux by Zabbix agent active"
+    workstation:
+      - "ICMP Ping"
+    iot:
+      - "ICMP Ping"
     unknown:
       - "ICMP Ping"
 
@@ -358,33 +517,59 @@ logging:
   backup_count: 5
 
 advanced:
-  api_timeout: 10
+  api_timeout: 15
+  api_retry: true
+  api_retry_count: 3
+  api_retry_delay: 5
+  api_rate_limit: 100
   processed_hosts_db: ${INSTALL_DIR}/data/processed_hosts.json
   scan_data_dir: ${INSTALL_DIR}/data/scans
+  cleanup:
+    enabled: true
+    keep_days: 30
+    keep_count: 100
+
+company:
+  name: "KGGR"
+  contact: "it@kggr.de"
+  location: "Germany"
 EOF
 
     chmod 600 "${INSTALL_DIR}/config/config.yml"
-    print_success "Configuration saved"
+    print_success "Configuration saved securely"
 }
 
-# Install systemd services
 install_services() {
-    print_info "Installing systemd services..."
+    print_header "Installing Systemd Services"
 
     # Auto-Discovery service
     cat > /etc/systemd/system/zabbix-autodiscovery.service << EOF
 [Unit]
-Description=Zabbix Auto-Discovery Service
-After=network.target zabbix-proxy.service
+Description=Plug & Monitor Auto-Discovery Service
+Documentation=https://kggr.de/monitoring
+After=network-online.target zabbix-proxy.service
+Wants=network-online.target
 Requires=zabbix-proxy.service
 
 [Service]
 Type=simple
 User=root
+Group=root
 WorkingDirectory=${INSTALL_DIR}/03_auto_discovery
-ExecStart=${INSTALL_DIR}/venv/bin/python ${INSTALL_DIR}/03_auto_discovery/auto_discovery.py --config ${INSTALL_DIR}/config/config.yml
+ExecStart=${INSTALL_DIR}/venv/bin/python3 ${INSTALL_DIR}/03_auto_discovery/auto_discovery.py --config ${INSTALL_DIR}/config/config.yml
 Restart=always
 RestartSec=10
+StartLimitInterval=200
+StartLimitBurst=5
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=zabbix-autodiscovery
+
+# Security
+NoNewPrivileges=true
+PrivateTmp=true
 
 [Install]
 WantedBy=multi-user.target
@@ -394,15 +579,27 @@ EOF
     cat > /etc/systemd/system/zabbix-dashboard.service << EOF
 [Unit]
 Description=Plug & Monitor Web Dashboard
-After=network.target
+Documentation=https://kggr.de/monitoring
+After=network-online.target
+Wants=network-online.target
 
 [Service]
 Type=simple
 User=root
+Group=root
 WorkingDirectory=${INSTALL_DIR}/02_network_scanner
-ExecStart=${INSTALL_DIR}/venv/bin/gunicorn -w 2 -b 0.0.0.0:${DASHBOARD_PORT} web_dashboard:app
+ExecStart=${INSTALL_DIR}/venv/bin/gunicorn -w 2 -b 0.0.0.0:${DASHBOARD_PORT} --timeout 120 web_dashboard:app
 Restart=always
 RestartSec=10
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=zabbix-dashboard
+
+# Security
+NoNewPrivileges=true
+PrivateTmp=true
 
 [Install]
 WantedBy=multi-user.target
@@ -412,43 +609,48 @@ EOF
     systemctl enable zabbix-autodiscovery >> "$LOG_FILE" 2>&1
     systemctl enable zabbix-dashboard >> "$LOG_FILE" 2>&1
 
-    print_success "Services installed"
+    print_success "Services installed and enabled"
 }
 
-# Start services
 start_services() {
-    print_info "Starting services..."
+    print_header "Starting Services"
 
     systemctl start zabbix-proxy
     sleep 2
     systemctl start zabbix-autodiscovery
+    sleep 1
     systemctl start zabbix-dashboard
-
-    sleep 3
+    sleep 2
 
     # Check status
+    local all_ok=true
+
     if systemctl is-active --quiet zabbix-proxy; then
-        print_success "Zabbix Proxy: Running"
+        print_success "✓ Zabbix Proxy: Running"
     else
-        print_error "Zabbix Proxy: Failed"
+        print_error "✗ Zabbix Proxy: Failed"
+        all_ok=false
     fi
 
     if systemctl is-active --quiet zabbix-autodiscovery; then
-        print_success "Auto-Discovery: Running"
+        print_success "✓ Auto-Discovery: Running"
     else
-        print_warning "Auto-Discovery: Not running (check logs)"
+        print_warning "⚠ Auto-Discovery: Not running"
     fi
 
     if systemctl is-active --quiet zabbix-dashboard; then
-        print_success "Dashboard: Running"
+        print_success "✓ Dashboard: Running"
     else
-        print_warning "Dashboard: Not running (check logs)"
+        print_warning "⚠ Dashboard: Not running"
+    fi
+
+    if [ "$all_ok" = false ]; then
+        print_warning "Some services failed - check logs"
     fi
 }
 
-# Configure firewall
 configure_firewall() {
-    print_info "Configuring firewall..."
+    print_header "Configuring Firewall"
 
     if command -v ufw &> /dev/null; then
         ufw allow 22/tcp >> "$LOG_FILE" 2>&1
@@ -457,54 +659,165 @@ configure_firewall() {
         ufw allow 10051/tcp >> "$LOG_FILE" 2>&1
         ufw --force enable >> "$LOG_FILE" 2>&1
         print_success "Firewall configured (UFW)"
+    else
+        print_warning "UFW not found - firewall not configured"
     fi
 }
 
-# Final summary
+run_quality_checks() {
+    print_header "Running Quality Checks"
+
+    local checks_passed=0
+    local checks_total=0
+
+    # Check 1: Config file exists and readable
+    ((checks_total++))
+    if [ -f "${INSTALL_DIR}/config/config.yml" ] && [ -r "${INSTALL_DIR}/config/config.yml" ]; then
+        print_success "✓ Configuration file readable"
+        ((checks_passed++))
+    else
+        print_error "✗ Configuration file missing or unreadable"
+    fi
+
+    # Check 2: Python environment
+    ((checks_total++))
+    if [ -f "${INSTALL_DIR}/venv/bin/python3" ]; then
+        print_success "✓ Python virtual environment exists"
+        ((checks_passed++))
+    else
+        print_error "✗ Python virtual environment missing"
+    fi
+
+    # Check 3: Zabbix Proxy database
+    ((checks_total++))
+    if [ -f "/var/lib/zabbix/zabbix_proxy.db" ] && [ -s "/var/lib/zabbix/zabbix_proxy.db" ]; then
+        print_success "✓ Zabbix Proxy database initialized"
+        ((checks_passed++))
+    else
+        print_error "✗ Zabbix Proxy database missing or empty"
+    fi
+
+    # Check 4: Zabbix Proxy connectivity
+    ((checks_total++))
+    if grep -q "sending configuration" /var/log/zabbix/zabbix_proxy.log 2>/dev/null; then
+        print_success "✓ Zabbix Proxy connected to server"
+        ((checks_passed++))
+    else
+        print_warning "⚠ Zabbix Proxy not yet connected (may take 1-2 minutes)"
+    fi
+
+    # Check 5: Services running
+    ((checks_total++))
+    local services_ok=0
+    systemctl is-active --quiet zabbix-proxy && ((services_ok++))
+    systemctl is-active --quiet zabbix-autodiscovery && ((services_ok++))
+    systemctl is-active --quiet zabbix-dashboard && ((services_ok++))
+
+    if [ $services_ok -eq 3 ]; then
+        print_success "✓ All services running"
+        ((checks_passed++))
+    else
+        print_warning "⚠ Only $services_ok/3 services running"
+    fi
+
+    # Check 6: Dashboard accessibility
+    ((checks_total++))
+    if curl -s -o /dev/null -w "%{http_code}" http://localhost:${DASHBOARD_PORT} | grep -q "200\|301\|302"; then
+        print_success "✓ Dashboard accessible"
+        ((checks_passed++))
+    else
+        print_warning "⚠ Dashboard not yet accessible"
+    fi
+
+    # Summary
+    echo ""
+    if [ $checks_passed -eq $checks_total ]; then
+        print_success "All quality checks passed ($checks_passed/$checks_total)"
+        return 0
+    else
+        print_warning "Quality checks: $checks_passed/$checks_total passed"
+        return 1
+    fi
+}
+
 show_summary() {
     local ip_addr=$(hostname -I | awk '{print $1}')
 
     clear
     echo ""
-    print_success "══════════════════════════════════════════════════"
-    print_success "     Installation completed successfully! 🎉"
-    print_success "══════════════════════════════════════════════════"
+    echo -e "${GREEN}╔══════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${GREEN}║  Installation Completed Successfully! 🎉                ║${NC}"
+    echo -e "${GREEN}║  Plug & Monitor v${VERSION} - Professional Edition          ║${NC}"
+    echo -e "${GREEN}╚══════════════════════════════════════════════════════════╝${NC}"
     echo ""
-    echo "📊 Access Dashboard:"
-    echo "   http://${ip_addr}:${DASHBOARD_PORT}"
+
+    echo -e "${CYAN}📊 Access Points:${NC}"
+    echo "   Dashboard:  http://${ip_addr}:${DASHBOARD_PORT}"
+    echo "   Username:   ${DASHBOARD_USER}"
+    echo "   Password:   ${DASHBOARD_PASSWORD}"
     echo ""
-    echo "📁 Important paths:"
-    echo "   Config: ${INSTALL_DIR}/config/config.yml"
-    echo "   Logs: ${LOG_DIR}/"
+
+    echo -e "${CYAN}📁 Important Paths:${NC}"
+    echo "   Config:     ${INSTALL_DIR}/config/config.yml"
+    echo "   Logs:       ${LOG_DIR}/"
+    echo "   Zabbix Log: /var/log/zabbix/zabbix_proxy.log"
     echo ""
-    echo "🔧 Check service status:"
+
+    echo -e "${CYAN}🔧 Service Management:${NC}"
     echo "   sudo systemctl status zabbix-proxy"
     echo "   sudo systemctl status zabbix-autodiscovery"
     echo "   sudo systemctl status zabbix-dashboard"
     echo ""
-    echo "⚠️  Next steps:"
-    echo "   1. Add proxy in Zabbix Server web interface"
-    echo "      Name: ${PROXY_NAME}"
-    echo "      Mode: Active"
-    echo "   2. Access dashboard and start network scan"
+
+    echo -e "${CYAN}📝 Next Steps:${NC}"
+    echo "   1. Add proxy in Zabbix Server web interface:"
+    echo "      • Go to: Administration → Proxies → Create proxy"
+    echo "      • Name: ${PROXY_NAME}"
+    echo "      • Mode: Active"
     echo ""
-    print_success "══════════════════════════════════════════════════"
+    echo "   2. Wait 1-2 minutes for proxy to connect"
+    echo "      • Check: tail -f /var/log/zabbix/zabbix_proxy.log"
+    echo "      • Look for: 'sending configuration'"
+    echo ""
+    echo "   3. Access dashboard and start network scan"
+    echo "      • Automatic scanning is ${AUTO_SCAN_ENABLED}"
+    if [ "$AUTO_SCAN_ENABLED" = "true" ]; then
+    echo "      • Scan interval: every ${SCAN_HOURS} hours"
+    fi
+    echo ""
+
+    echo -e "${CYAN}📞 Support:${NC}"
+    echo "   Company: KGGR"
+    echo "   Contact: it@kggr.de"
+    echo "   Docs:    ${INSTALL_DIR}/docs/"
+    echo ""
+
+    echo -e "${CYAN}📋 Installation Log:${NC}"
+    echo "   ${LOG_FILE}"
+    echo ""
+
+    echo -e "${GREEN}╔══════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${GREEN}║  Professional monitoring solution ready for production  ║${NC}"
+    echo -e "${GREEN}╚══════════════════════════════════════════════════════════╝${NC}"
+    echo ""
 }
 
 # Main installation
 main() {
     show_banner
     check_root
+    check_prerequisites
 
     read -p "Proceed with installation? (y/N): " -n 1 -r
     echo ""
     if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        print_info "Installation cancelled"
         exit 0
     fi
 
     collect_config
 
-    print_info "Starting installation..."
+    print_info "Starting professional installation..."
     echo ""
 
     create_directories
@@ -516,9 +829,12 @@ main() {
     configure_firewall
     start_services
 
+    echo ""
+    run_quality_checks
+
     show_summary
 
-    print_info "Installation log: $LOG_FILE"
+    print_info "Full installation log: $LOG_FILE"
 }
 
 main "$@"
