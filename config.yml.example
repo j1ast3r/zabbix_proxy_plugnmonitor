@@ -1,117 +1,369 @@
-# Plug & Monitor - Main Configuration
-# Copy to /opt/plug-monitor/config/config.yml and edit
+# Plug & Monitor - Main Configuration File
+# Copy this file to /opt/plug-monitor/config/config.yml and edit
+# Version: 1.1.0 (Fixed template names for Zabbix 4.x-6.x)
 
+# =============================================================================
+# ZABBIX SERVER CONFIGURATION
+# =============================================================================
 zabbix:
-  server: 192.168.1.10
-  server_port: 10051
-  api_url: http://192.168.1.10/api_jsonrpc.php
+  # Zabbix Server address in format: hostname:port or ip:port
+  # Examples:
+  #   - monitoring.kggr.de:10051
+  #   - 192.168.1.10:10051
+  server: monitoring.kggr.de:10051
 
-  # API Token (Zabbix 7.0+) - recommended
-  api_token: ""
+  # Zabbix API URL (JSON-RPC endpoint)
+  # Will be auto-generated from server if left empty
+  # Format: http://<server>/api_jsonrpc.php
+  # Or: http://<server>/zabbix/api_jsonrpc.php (if in subdirectory)
+  api_url: http://monitoring.kggr.de/api_jsonrpc.php
 
-  # OR Username/Password (legacy)
+  # API Authentication - Choose ONE method:
+
+  # METHOD 1: API Token (Recommended for Zabbix 5.4+, 6.x, 7.x)
+  # Create token in: Administration → API tokens → Create API token
+  # Leave api_user and api_password empty if using token
+  api_token: ""  # Example: "a1b2c3d4e5f6g7h8i9j0..."
+
+  # METHOD 2: Username + Password (Works on all versions)
+  # Only use if api_token is empty
   api_user: Admin
   api_password: zabbix
 
+  # Proxy Configuration
+  # This name MUST match the proxy name in Zabbix Server frontend
+  # IMPORTANT: Proxy is REQUIRED for monitoring remote networks!
   proxy_name: PlugMonitor-Proxy-RPI001
 
+# =============================================================================
+# NETWORK SCANNING CONFIGURATION
+# =============================================================================
 network:
+  # Network range to scan in CIDR notation
+  # Will be auto-detected if left empty
+  # Examples:
+  #   Single network: 192.168.1.0/24
+  #   Multiple networks: ["192.168.1.0/24", "192.168.2.0/24"]
   scan_range: 192.168.1.0/24
-  scan_interval: 3600
-  nmap_options: "-sn -T4"
-  exclude_ips:
-    - 192.168.1.1      # Gateway
-    - 192.168.1.10     # Zabbix Server
 
+  # Scan interval in seconds
+  # 3600 = 1 hour, 1800 = 30 minutes, 7200 = 2 hours
+  scan_interval: 3600
+
+  # Nmap options for scanning
+  # -sn: Ping scan (no port scan) - fastest
+  # -T4: Aggressive timing
+  # IMPORTANT: Don't use -O (OS detection) in regular scans - too slow!
+  nmap_options: "-sn -T4"
+
+  # IPs to exclude from scanning (gateway, servers, etc)
+  # Will be auto-populated with gateway if left empty
+  exclude_ips: []
+    # - 192.168.1.1      # Router/Gateway
+    # - 192.168.1.10     # Zabbix Server
+
+# =============================================================================
+# AUTO-DISCOVERY CONFIGURATION
+# =============================================================================
 discovery:
+  # Enable automatic discovery
   enabled: true
+
+  # Automatically add discovered hosts to Zabbix
   auto_add_hosts: true
+
+  # Automatically apply templates based on device type/OS
   auto_apply_templates: true
 
+  # Default host groups for ALL discovered hosts
   default_groups:
     - "Discovered hosts"
     - "PlugMonitor"
 
+  # Check interval for processing new scan results (seconds)
   check_interval: 60
 
-  # CRITICAL: Use exact template names from Zabbix 7.0 LTS
-  template_mapping:
-    windows:
-      - "Windows by Zabbix agent active"
-    linux:
-      - "Linux by Zabbix agent active"
-    network_device:
-      - "Generic SNMP"
-    printer:
-      - "Generic SNMP"
-    server:
-      - "Linux by Zabbix agent active"
-    workstation:
-      - "ICMP Ping"
-    iot:
-      - "ICMP Ping"
-    unknown:
-      - "ICMP Ping"
+  # =========================================================================
+  # TEMPLATE MAPPING RULES - CRITICAL!
+  # =========================================================================
+  # IMPORTANT: Use EXACT template names from your Zabbix server!
+  # Template names differ between Zabbix versions:
+  #
+  # HOW TO GET EXACT NAMES FROM YOUR ZABBIX SERVER:
+  #
+  # Method 1: Web Interface (easiest)
+  #   1. Login to Zabbix Web: http://your-zabbix/
+  #   2. Go to: Data collection → Templates
+  #   3. Find templates for: Linux, Windows, ICMP, SNMP
+  #   4. Copy EXACT names (including capitalization and spaces)
+  #
+  # Method 2: API (faster)
+  #   curl -X POST http://your-zabbix/api_jsonrpc.php \
+  #     -H "Content-Type: application/json-rpc" \
+  #     -d '{"jsonrpc":"2.0","method":"template.get",\
+  #          "params":{"output":["name"]},\
+  #          "auth":"YOUR_TOKEN","id":1}' | jq -r '.result[].name'
+  #
+  # COMMON TEMPLATE NAMES BY ZABBIX VERSION:
+  #
+  # Zabbix 4.x - 6.x (OLD NAMING):
+  #   Linux:    "Template OS Linux"
+  #   Windows:  "Template OS Windows"
+  #   SNMP:     "Template Net Network Generic Device SNMPv2"
+  #   ICMP:     "Template Module ICMP Ping"
+  #
+  # Zabbix 7.0 LTS (NEW NAMING):
+  #   Linux:    "Linux by Zabbix agent active"
+  #   Windows:  "Windows by Zabbix agent active"
+  #   SNMP:     "Generic by SNMP"
+  #   ICMP:     "ICMP Ping"
+  #
+  # =========================================================================
 
+  template_mapping:
+    # Windows computers
+    # Zabbix 4.x-6.x: "Template OS Windows"
+    # Zabbix 7.0: "Windows by Zabbix agent active"
+    windows:
+      - "Template OS Windows"
+
+    # Linux servers/workstations
+    # Zabbix 4.x-6.x: "Template OS Linux"
+    # Zabbix 7.0: "Linux by Zabbix agent active"
+    linux:
+      - "Template OS Linux"
+
+    # Network devices (switches, routers)
+    # Zabbix 4.x-6.x: "Template Net Network Generic Device SNMPv2"
+    # Zabbix 7.0: "Generic by SNMP"
+    network_device:
+      - "Template Net Network Generic Device SNMPv2"
+
+    # Printers
+    # Works on all versions
+    printer:
+      - "Template Module Generic SNMPv2"
+
+    # Servers (if OS unknown)
+    server:
+      - "Template OS Linux"
+
+    # Workstations (if OS unknown)
+    # Zabbix 4.x-6.x: "Template Module ICMP Ping"
+    # Zabbix 7.0: "ICMP Ping"
+    workstation:
+      - "Template Module ICMP Ping"
+
+    # IoT devices
+    iot:
+      - "Template Module ICMP Ping"
+
+    # Unknown devices (fallback to ICMP ping)
+    unknown:
+      - "Template Module ICMP Ping"
+
+  # Host group mapping by device type
+  # Additional groups added based on detected device type
+  group_mapping:
+    server: ["Servers", "Linux servers"]
+    workstation: ["Workstations"]
+    network_device: ["Network devices"]
+    printer: ["Printers"]
+    iot: ["IoT devices"]
+
+  # Interface configuration for new hosts
+  interface:
+    type: 1              # 1=Agent, 2=SNMP, 3=IPMI, 4=JMX
+    port: 10050          # Zabbix agent port
+    useip: 1             # 1=Use IP, 0=Use DNS
+    dns: ""              # DNS name (empty if using IP)
+
+  # Inventory settings
+  inventory:
+    mode: 0              # 0=Manual, 1=Automatic
+    populate: true       # Auto-populate from scan data
+
+# =============================================================================
+# WEB DASHBOARD CONFIGURATION
+# =============================================================================
 dashboard:
+  # Listen address
+  # 0.0.0.0 = all interfaces (accessible from network)
+  # 127.0.0.1 = localhost only (accessible only from RPi)
   host: 0.0.0.0
+
+  # Web interface port
   port: 8080
+
+  # Admin credentials for dashboard
+  # CHANGE THESE IMMEDIATELY!
   admin_user: admin
   admin_password: changeme
-  secret_key: change-this-to-random-string
+
+  # Secret key for session encryption
+  # Generate new one with: openssl rand -hex 32
+  # CRITICAL: Change this to a random string!
+  secret_key: change-this-to-random-string-generated-by-openssl-rand
+
+# =============================================================================
+# AUTOMATION LEVEL
+# =============================================================================
+# 1 = Basic (ICMP + SNMP only, no agents)
+#     - Simple ping monitoring
+#     - SNMP for network devices
+#     - No detailed metrics
+#
+# 2 = Semi-Auto (+ Agent deployment scripts available)
+#     - Everything from Level 1
+#     - Agent deployment tools (PowerShell, Ansible)
+#     - Detailed host metrics when agents installed
+#     - PSK encryption support
+#
+# 3 = Full Auto (+ AD integration, GPO deployment)
+#     - Everything from Level 2
+#     - Active Directory synchronization
+#     - Automatic GPO-based agent deployment
+#     - Enterprise features
 
 automation_level: 2
 
+# =============================================================================
+# ACTIVE DIRECTORY INTEGRATION (Level 3 only)
+# =============================================================================
+active_directory:
+  # Enable AD integration
+  enabled: false
+
+  # AD Server settings
+  server: dc.example.com
+  port: 389
+  use_ssl: false         # Set to true for LDAPS (port 636)
+
+  # Service account credentials
+  # This account needs read access to computer objects
+  bind_dn: "CN=ZabbixService,OU=ServiceAccounts,DC=example,DC=com"
+  bind_password: "YourSecurePassword"
+
+  # Search base for computer objects
+  base_dn: "OU=Computers,DC=example,DC=com"
+
+  # LDAP search filter
+  # Default: all computers
+  search_filter: "(objectClass=computer)"
+
+  # Only enabled computers:
+  # search_filter: "(&(objectClass=computer)(!(userAccountControl:1.2.840.113556.1.4.803:=2)))"
+
+  # Only Windows servers:
+  # search_filter: "(&(objectClass=computer)(operatingSystem=*Server*))"
+
+  # Synchronization settings
+  sync_interval: 3600    # seconds (1 hour)
+  auto_import: true
+
+  # Cleanup inactive hosts
+  remove_inactive: false
+  inactive_days: 90
+
+# =============================================================================
+# PSK ENCRYPTION SETTINGS
+# =============================================================================
+psk:
+  # Enable PSK encryption for agent communication
+  enabled: false
+
+  # Auto-generate PSK keys for new hosts
+  auto_generate: false
+
+  # PSK key length (256 or 512 bits)
+  key_length: 256
+
+  # Key storage directory
+  key_dir: /opt/plug-monitor/data/keys
+
+# =============================================================================
+# LOGGING CONFIGURATION
+# =============================================================================
 logging:
+  # Log level: DEBUG, INFO, WARNING, ERROR, CRITICAL
   level: INFO
+
+  # Log file location
   file: /var/log/plug-monitor/plug-monitor.log
+
+  # Max log file size in bytes (10MB default)
   max_size: 10485760
+
+  # Number of backup files to keep
   backup_count: 5
-```
 
----
+  # Log format
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 
-### 5. Обновленный `.gitignore`
+# =============================================================================
+# ADVANCED SETTINGS
+# =============================================================================
+advanced:
+  # API request timeout (seconds)
+  api_timeout: 10
 
-Обнови файл: `.gitignore`
-```
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-venv/
-env/
-ENV/
-*.egg-info/
-dist/
-build/
+  # Retry failed API calls
+  api_retry: true
+  api_retry_count: 3
+  api_retry_delay: 5
 
-# PyCharm
-.idea/
-*.iml
+  # Rate limiting for API calls (calls per minute)
+  # Prevents overwhelming Zabbix Server
+  api_rate_limit: 60
 
-# Config files with sensitive data
-config.yml
-!config.yml.example
-*.psk
+  # Database for tracking processed hosts
+  processed_hosts_db: /opt/plug-monitor/data/processed_hosts.json
 
-# Data
-data/
-scans/
-keys/
-backups/
+  # Scan results directory
+  scan_data_dir: /opt/plug-monitor/data/scans
 
-# Logs
-*.log
+# =============================================================================
+# NOTIFICATION SETTINGS (Optional)
+# =============================================================================
+notifications:
+  # Enable notifications
+  enabled: false
 
-# Temporary
-*.tmp
-.DS_Store
+  # Telegram notifications
+  telegram:
+    enabled: false
+    bot_token: ""
+    chat_id: ""
 
-# Secrets
-.env
+  # Slack notifications
+  slack:
+    enabled: false
+    webhook_url: ""
 
-# OS
-Thumbs.db
+  # Email notifications
+  email:
+    enabled: false
+    smtp_server: smtp.gmail.com
+    smtp_port: 587
+    use_tls: true
+    username: ""
+    password: ""
+    from_addr: ""
+    to_addrs: []
+
+# =============================================================================
+# PERFORMANCE TUNING (Advanced users only)
+# =============================================================================
+performance:
+  # Maximum concurrent scans
+  max_concurrent_scans: 1
+
+  # Scan timeout (seconds)
+  scan_timeout: 300
+
+  # API call batch size
+  api_batch_size: 100
+
+  # Cache settings
+  cache_enabled: true
+  cache_ttl: 300  # seconds

@@ -1,7 +1,7 @@
 #!/bin/bash
 #================================================================
 # Plug & Monitor - Professional Master Installation Script
-# Version: 2.0 for KGGR
+# Version: 2.0.1 for KGGR - TEMPLATE NAMES FIXED!
 # All bugs fixed + Quality checks + Auto-scan enabled
 #================================================================
 
@@ -19,7 +19,7 @@ NC='\033[0m'
 INSTALL_DIR="/opt/plug-monitor"
 LOG_DIR="/var/log/plug-monitor"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-VERSION="2.0"
+VERSION="2.0.1"
 
 # Default settings for KGGR
 DEFAULT_ZABBIX_SERVER="monitoring.kggr.de:10051"
@@ -249,7 +249,7 @@ install_zabbix_proxy() {
     # Install dependencies
     print_info "Installing dependencies..."
     apt-get update >> "$LOG_FILE" 2>&1
-    apt-get install -y wget gnupg2 sqlite3 fping nmap curl >> "$LOG_FILE" 2>&1
+    apt-get install -y wget gnupg2 sqlite3 fping nmap curl jq >> "$LOG_FILE" 2>&1
 
     # Install based on OS
     if [ "$OS_ID" = "debian" ] || [ "$OS_ID" = "raspbian" ]; then
@@ -482,24 +482,28 @@ discovery:
     - "Discovered hosts"
     - "KGGR Infrastructure"
   check_interval: 60
+
+  # ✅ FIXED: Template names for Zabbix 4.x-6.x (KGGR uses Zabbix 6.x)
+  # ⚠️ CRITICAL: These are EXACT names from YOUR Zabbix Server!
+  # Verified with: curl API + template.get
+  # DO NOT change unless you verified exact names in your Zabbix!
   template_mapping:
     windows:
-      - "Windows by Zabbix agent active"
+      - "Template OS Windows"
     linux:
-      - "Linux by Zabbix agent active"
+      - "Template OS Linux"
     network_device:
-      - "Generic SNMP"
-      - "Interfaces Simple SNMP"
+      - "Template Net Network Generic Device SNMPv2"
     printer:
-      - "Generic SNMP"
+      - "Template Module Generic SNMPv2"
     server:
-      - "Linux by Zabbix agent active"
+      - "Template OS Linux"
     workstation:
-      - "ICMP Ping"
+      - "Template Module ICMP Ping"
     iot:
-      - "ICMP Ping"
+      - "Template Module ICMP Ping"
     unknown:
-      - "ICMP Ping"
+      - "Template Module ICMP Ping"
 
 dashboard:
   host: 0.0.0.0
@@ -747,7 +751,7 @@ show_summary() {
     echo ""
     echo -e "${GREEN}╔══════════════════════════════════════════════════════════╗${NC}"
     echo -e "${GREEN}║  Installation Completed Successfully! 🎉                ║${NC}"
-    echo -e "${GREEN}║  Plug & Monitor v${VERSION} - Professional Edition          ║${NC}"
+    echo -e "${GREEN}║  Plug & Monitor v${VERSION} - Professional Edition        ║${NC}"
     echo -e "${GREEN}╚══════════════════════════════════════════════════════════╝${NC}"
     echo ""
 
