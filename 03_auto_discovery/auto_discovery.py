@@ -2,7 +2,7 @@
 """
 Auto-Discovery Daemon for Plug & Monitor
 Automatically adds discovered hosts to Zabbix Server via API
-CRITICAL FIX: Proxy is REQUIRED for remote network monitoring
++ Auto-creates dashboard with graphs for all monitored hosts
 """
 
 import json
@@ -98,7 +98,6 @@ class ZabbixAPI:
         try:
             logger.info(f"Looking for REQUIRED proxy: {proxy_name}")
 
-            # FIXED: Remove 'status' from output - not supported in all Zabbix versions
             proxies = self._call('proxy.get', {
                 'output': ['proxyid', 'name'],
                 'filter': {'name': proxy_name}
@@ -110,7 +109,6 @@ class ZabbixAPI:
                 proxy = proxies[0]
                 proxy_id = proxy['proxyid']
 
-                # CRITICAL: Check if proxy_id is valid
                 if proxy_id and proxy_id != '0' and proxy_id != 0:
                     logger.info(f"✅ Found proxy '{proxy_name}' with ID: {proxy_id}")
                     return str(proxy_id)
@@ -296,6 +294,284 @@ class ZabbixAPI:
             logger.error(f"Error creating host {host_data.get('hostname')}: {e}")
             return None
 
+    def get_hosts_by_proxy(self, proxy_id: str) -> List[Dict]:
+        """Get all hosts monitored by specific proxy"""
+        try:
+            hosts = self._call('host.get', {
+                'output': ['hostid', 'host', 'name'],
+                'proxyids': [proxy_id],
+                'sortfield': 'name'
+            })
+
+            logger.info(f"Found {len(hosts)} hosts monitored by proxy {proxy_id}")
+            return hosts
+
+        except Exception as e:
+            logger.error(f"Error getting hosts by proxy: {e}")
+            return []
+
+    def get_host_graphs(self, hostid: str) -> List[Dict]:
+        """Get graphs for specific host"""
+        try:
+            graphs = self._call('graph.get', {
+                'output': ['graphid', 'name'],
+                'hostids': [hostid],
+                'sortfield': 'name',
+                'limit': 10  # Top 10 graphs per host
+            })
+
+            return graphs
+
+        except Exception as e:
+            logger.error(f"Error getting graphs for host {hostid}: {e}")
+            return []
+
+    def get_dashboard_id(self, dashboard_name: str) -> Optional[str]:
+        """Check if dashboard already exists"""
+        try:
+            dashboards = self._call('dashboard.get', {
+                'output': ['dashboardid', 'name'],
+                'filter': {'name': dashboard_name}
+            })
+
+            if dashboards:
+                return dashboards[0]['dashboardid']
+
+            return None
+
+        except Exception as e:
+            logger.error(f"Error checking dashboard existence: {e}")
+            return None
+
+    def create_dashboard(self, proxy_name: str, proxy_id: str) -> Optional[str]:
+        """Create dashboard with graphs for all hosts monitored by proxy"""
+        try:
+            dashboard_name = f"Dashboard - {proxy_name}"
+
+            # Check if already exists
+            existing_id = self.get_dashboard_id(dashboard_name)
+            if existing_id:
+                logger.info(f"Dashboard '{dashboard_name}' already exists (ID: {existing_id}), will update it")
+                return self.update_dashboard(existing_id, proxy_id, proxy_name)
+
+            logger.info(f"Creating dashboard: {dashboard_name}")
+
+            # Get all hosts for this proxy
+            hosts = self.get_hosts_by_proxy(proxy_id)
+
+            if not hosts:
+                logger.warning(f"No hosts found for proxy {proxy_id}, skipping dashboard creation")
+                return None
+
+            # Build widgets
+            widgets = []
+
+            # 1. Summary widget - Problems by severity
+            widgets.append({
+                'type': 'problemsbysv',
+                'name': f'{proxy_name} - Problems',
+                'x': 0,
+                'y': 0,
+                'width': 12,
+                'height': 5,
+                'fields': [
+                    {'type': 1, 'name': 'show_suppressed', 'value': 0}
+                ]
+            })
+
+            # 2. Host availability widget
+            widgets.append({
+                'type': 'hostavail',
+                'name': f'{proxy_name} - Host Availability',
+                'x': 12,
+                'y': 0,
+                'width': 12,
+                'height': 5,
+                'fields': []
+            })
+
+            # 3. Add graph widgets for each host (2 per row)
+            y_position = 5
+            x_position = 0
+            widget_width = 12
+            widget_height = 5
+
+            for idx, host in enumerate(hosts[:20]):  # Limit to 20 hosts to avoid huge dashboard
+                hostid = host['hostid']
+                hostname = host['name']
+
+                # Get graphs for this host
+                graphs = self.get_host_graphs(hostid)
+
+                if not graphs:
+                    # If no graphs, add CPU utilization widget
+                    widgets.append({
+                        'type': 'item',
+                        'name': f'{hostname} - Status',
+                        'x': x_position,
+                        'y': y_position,
+                        'width': widget_width,
+                        'height': widget_height,
+                        'fields': [
+                            {'type': 0, 'name': 'itemid', 'value': ''},  # Will show host status
+                            {'type': 0, 'name': 'description', 'value': hostname}
+                        ]
+                    })
+                else:
+                    # Add first graph for this host
+                    graph = graphs[0]
+                    widgets.append({
+                        'type': 'graph',
+                        'name': f'{hostname}',
+                        'x': x_position,
+                        'y': y_position,
+                        'width': widget_width,
+                        'height': widget_height,
+                        'fields': [
+                            {'type': 0, 'name': 'graphid', 'value': graph['graphid']}
+                        ]
+                    })
+
+                # Position for next widget
+                x_position += widget_width
+                if x_position >= 24:  # Zabbix dashboard is 24 units wide
+                    x_position = 0
+                    y_position += widget_height
+
+            # Create dashboard
+            params = {
+                'name': dashboard_name,
+                'display_period': 30,
+                'auto_start': 1,
+                'pages': [{
+                    'name': 'Overview',
+                    'widgets': widgets
+                }]
+            }
+
+            result = self._call('dashboard.create', params)
+            dashboard_id = result['dashboardids'][0]
+
+            logger.info(f"✅ Created dashboard '{dashboard_name}' with {len(widgets)} widgets - ID: {dashboard_id}")
+            return dashboard_id
+
+        except Exception as e:
+            logger.error(f"Error creating dashboard: {e}")
+            return None
+
+    def update_dashboard(self, dashboard_id: str, proxy_id: str, proxy_name: str) -> Optional[str]:
+        """Update existing dashboard with current hosts"""
+        try:
+            logger.info(f"Updating dashboard ID {dashboard_id} for proxy {proxy_name}")
+
+            # Get current dashboard
+            dashboards = self._call('dashboard.get', {
+                'output': 'extend',
+                'selectPages': 'extend',
+                'dashboardids': [dashboard_id]
+            })
+
+            if not dashboards:
+                logger.error(f"Dashboard {dashboard_id} not found")
+                return None
+
+            dashboard = dashboards[0]
+
+            # Get all hosts for this proxy
+            hosts = self.get_hosts_by_proxy(proxy_id)
+
+            if not hosts:
+                logger.warning(f"No hosts found for proxy {proxy_id}")
+                return dashboard_id
+
+            # Rebuild widgets
+            widgets = []
+
+            # 1. Summary widget
+            widgets.append({
+                'type': 'problemsbysv',
+                'name': f'{proxy_name} - Problems',
+                'x': 0,
+                'y': 0,
+                'width': 12,
+                'height': 5,
+                'fields': [
+                    {'type': 1, 'name': 'show_suppressed', 'value': 0}
+                ]
+            })
+
+            # 2. Host availability
+            widgets.append({
+                'type': 'hostavail',
+                'name': f'{proxy_name} - Host Availability',
+                'x': 12,
+                'y': 0,
+                'width': 12,
+                'height': 5,
+                'fields': []
+            })
+
+            # 3. Add graphs
+            y_position = 5
+            x_position = 0
+            widget_width = 12
+            widget_height = 5
+
+            for host in hosts[:20]:
+                hostid = host['hostid']
+                hostname = host['name']
+
+                graphs = self.get_host_graphs(hostid)
+
+                if not graphs:
+                    widgets.append({
+                        'type': 'item',
+                        'name': f'{hostname} - Status',
+                        'x': x_position,
+                        'y': y_position,
+                        'width': widget_width,
+                        'height': widget_height,
+                        'fields': [
+                            {'type': 0, 'name': 'description', 'value': hostname}
+                        ]
+                    })
+                else:
+                    graph = graphs[0]
+                    widgets.append({
+                        'type': 'graph',
+                        'name': f'{hostname}',
+                        'x': x_position,
+                        'y': y_position,
+                        'width': widget_width,
+                        'height': widget_height,
+                        'fields': [
+                            {'type': 0, 'name': 'graphid', 'value': graph['graphid']}
+                        ]
+                    })
+
+                x_position += widget_width
+                if x_position >= 24:
+                    x_position = 0
+                    y_position += widget_height
+
+            # Update dashboard
+            params = {
+                'dashboardid': dashboard_id,
+                'pages': [{
+                    'name': 'Overview',
+                    'widgets': widgets
+                }]
+            }
+
+            self._call('dashboard.update', params)
+
+            logger.info(f"✅ Updated dashboard with {len(widgets)} widgets")
+            return dashboard_id
+
+        except Exception as e:
+            logger.error(f"Error updating dashboard: {e}")
+            return None
+
 
 class AutoDiscovery:
     """Auto-discovery daemon"""
@@ -304,6 +580,7 @@ class AutoDiscovery:
         self.config = self._load_config(config_path)
         self.zapi = None
         self.proxy_id = None
+        self.proxy_name = None
         self.scan_data_dir = Path("/opt/plug-monitor/data/scans")
         self.processed_file = Path("/opt/plug-monitor/data/processed_hosts.json")
         self.processed_hosts = self._load_processed()
@@ -366,24 +643,24 @@ class AutoDiscovery:
                 return False
 
             # CRITICAL: Get proxy ID - REQUIRED for remote network monitoring
-            proxy_name = zabbix_config.get('proxy_name', '')
-            if not proxy_name:
+            self.proxy_name = zabbix_config.get('proxy_name', '')
+            if not self.proxy_name:
                 logger.error("❌ CRITICAL: proxy_name not configured in config.yml!")
                 logger.error("   Remote network monitoring requires a proxy!")
                 return False
 
-            self.proxy_id = self.zapi.get_proxy_id(proxy_name)
+            self.proxy_id = self.zapi.get_proxy_id(self.proxy_name)
 
             if not self.proxy_id:
                 logger.error("❌ CRITICAL: Proxy not found! Cannot continue without proxy.")
                 logger.error("   Please create proxy in Zabbix Server first:")
                 logger.error("   1. Go to Administration → Proxies → Create proxy")
-                logger.error(f"   2. Proxy name: {proxy_name}")
+                logger.error(f"   2. Proxy name: {self.proxy_name}")
                 logger.error("   3. Proxy mode: Active")
                 logger.error("   4. Wait for proxy to connect (check proxy logs)")
                 return False
 
-            logger.info(f"✅ Using proxy: {proxy_name} (ID: {self.proxy_id})")
+            logger.info(f"✅ Using proxy: {self.proxy_name} (ID: {self.proxy_id})")
             logger.info(f"✅ All hosts will be monitored via this proxy")
             return True
 
@@ -497,6 +774,11 @@ class AutoDiscovery:
             # Save processed hosts
             self._save_processed()
 
+            # Create or update dashboard if hosts were added
+            if added_count > 0:
+                logger.info("📊 Creating/updating dashboard with new hosts...")
+                self.zapi.create_dashboard(self.proxy_name, self.proxy_id)
+
         except Exception as e:
             logger.error(f"Error processing scan results: {e}")
 
@@ -536,15 +818,24 @@ def main():
                         help='Check interval in seconds')
     parser.add_argument('--once', action='store_true',
                         help='Run once and exit')
+    parser.add_argument('--create-dashboard', action='store_true',
+                        help='Force create/update dashboard')
 
     args = parser.parse_args()
 
     discovery = AutoDiscovery(config_path=args.config)
 
-    if args.once:
+    if not discovery.connect_zabbix():
+        logger.error("Failed to connect to Zabbix")
+        return
+
+    if args.create_dashboard:
+        # Just create dashboard
+        logger.info("Creating dashboard...")
+        discovery.zapi.create_dashboard(discovery.proxy_name, discovery.proxy_id)
+    elif args.once:
         # Run once
-        if discovery.connect_zabbix():
-            discovery.process_scan_results()
+        discovery.process_scan_results()
     else:
         # Run as daemon
         discovery.run(interval=args.interval)
