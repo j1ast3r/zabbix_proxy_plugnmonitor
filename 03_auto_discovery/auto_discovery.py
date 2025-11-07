@@ -2,7 +2,7 @@
 """
 Auto-Discovery Daemon for Plug & Monitor
 Automatically adds discovered hosts to Zabbix Server via API
-FINAL VERSION: Enhanced logging, better proxy_id handling
+CRITICAL FIX: Proxy is REQUIRED for remote network monitoring
 """
 
 import json
@@ -10,6 +10,7 @@ import yaml
 import time
 import logging
 import requests
+import re
 from pathlib import Path
 from typing import Dict, List, Optional
 from datetime import datetime
@@ -93,12 +94,13 @@ class ZabbixAPI:
             return False
 
     def get_proxy_id(self, proxy_name: str) -> Optional[str]:
-        """Get proxy ID by name"""
+        """Get proxy ID by name - REQUIRED for remote monitoring"""
         try:
-            logger.info(f"Looking for proxy: {proxy_name}")
+            logger.info(f"Looking for REQUIRED proxy: {proxy_name}")
 
+            # FIXED: Remove 'status' from output - not supported in all Zabbix versions
             proxies = self._call('proxy.get', {
-                'output': ['proxyid', 'name', 'status'],
+                'output': ['proxyid', 'name'],
                 'filter': {'name': proxy_name}
             })
 
@@ -110,14 +112,17 @@ class ZabbixAPI:
 
                 # CRITICAL: Check if proxy_id is valid
                 if proxy_id and proxy_id != '0' and proxy_id != 0:
-                    logger.info(
-                        f"✅ Found proxy '{proxy_name}' with ID: {proxy_id} (status: {proxy.get('status', 'unknown')})")
+                    logger.info(f"✅ Found proxy '{proxy_name}' with ID: {proxy_id}")
                     return str(proxy_id)
                 else:
-                    logger.warning(f"⚠️ Proxy '{proxy_name}' has invalid ID: {proxy_id}")
+                    logger.error(f"❌ Proxy '{proxy_name}' has invalid ID: {proxy_id}")
                     return None
             else:
-                logger.warning(f"❌ Proxy '{proxy_name}' not found in Zabbix")
+                logger.error(f"❌ CRITICAL: Proxy '{proxy_name}' not found in Zabbix Server!")
+                logger.error(f"   Please create proxy in Zabbix Web:")
+                logger.error(f"   Administration → Proxies → Create proxy")
+                logger.error(f"   Proxy name: {proxy_name}")
+                logger.error(f"   Proxy mode: Active")
                 return None
 
         except Exception as e:
@@ -191,11 +196,31 @@ class ZabbixAPI:
             logger.error(f"Error checking host existence: {e}")
             return False
 
-    def create_host(self, host_data: Dict, proxy_id: Optional[str], group_ids: List[Dict],
-                    template_ids: List[str]) -> Optional[str]:
-        """Create host in Zabbix"""
+    @staticmethod
+    def sanitize_hostname(hostname: str) -> str:
+        """
+        Sanitize hostname to comply with Zabbix requirements
+        Allowed: alphanumeric, '.', ' ', '_', '-'
+        """
+        # Replace invalid characters with underscore
+        sanitized = re.sub(r'[^a-zA-Z0-9.\s_-]', '_', hostname)
+
+        # Remove multiple consecutive underscores
+        sanitized = re.sub(r'_+', '_', sanitized)
+
+        # Trim underscores from start/end
+        sanitized = sanitized.strip('_')
+
+        if sanitized != hostname:
+            logger.info(f"Sanitized hostname: '{hostname}' -> '{sanitized}'")
+
+        return sanitized
+
+    def create_host(self, host_data: Dict, proxy_id: str, group_ids: List[Dict],
+                    template_ids: List[str], device_type: str) -> Optional[str]:
+        """Create host in Zabbix - proxy_id is REQUIRED"""
         try:
-            hostname = host_data['hostname']
+            hostname = self.sanitize_hostname(host_data['hostname'])
             ip = host_data['ip']
 
             # Check if already exists
@@ -203,12 +228,38 @@ class ZabbixAPI:
                 logger.info(f"Host already exists: {hostname} ({ip})")
                 return None
 
+            # CRITICAL: proxy_id is REQUIRED for remote monitoring
+            if not proxy_id or str(proxy_id) == '0':
+                logger.error(f"Cannot create host {hostname}: proxy_id is required but not available!")
+                return None
+
             # Prepare host creation parameters
             params = {
                 'host': hostname,
                 'name': hostname,
                 'groups': group_ids,
-                'interfaces': [{
+                'proxyid': str(proxy_id)  # ALWAYS use proxy for remote network
+            }
+
+            # CRITICAL FIX: Create appropriate interface based on device type
+            if device_type in ['network_device', 'printer']:
+                # SNMP interface for network devices and printers
+                params['interfaces'] = [{
+                    'type': 2,  # SNMP
+                    'main': 1,
+                    'useip': 1,
+                    'ip': ip,
+                    'dns': '',
+                    'port': '161',
+                    'details': {
+                        'version': 2,  # SNMPv2
+                        'community': '{$SNMP_COMMUNITY}'  # Will use macro
+                    }
+                }]
+                logger.debug(f"Creating {device_type} with SNMP interface via proxy {proxy_id}")
+            else:
+                # Agent interface for all other devices
+                params['interfaces'] = [{
                     'type': 1,  # Agent
                     'main': 1,
                     'useip': 1,
@@ -216,14 +267,7 @@ class ZabbixAPI:
                     'dns': '',
                     'port': '10050'
                 }]
-            }
-
-            # CRITICAL FIX: Only add proxyid if it's valid (not None, not '0', not 0)
-            if proxy_id and str(proxy_id) != '0':
-                params['proxyid'] = str(proxy_id)
-                logger.debug(f"Adding host with proxy_id: {proxy_id}")
-            else:
-                logger.debug(f"Adding host WITHOUT proxy (monitored by server directly)")
+                logger.debug(f"Creating {device_type} with Agent interface via proxy {proxy_id}")
 
             # Add templates if specified
             if template_ids:
@@ -244,7 +288,7 @@ class ZabbixAPI:
             result = self._call('host.create', params)
 
             host_id = result['hostids'][0]
-            logger.info(f"✅ Created host: {hostname} ({ip}) - ID: {host_id}")
+            logger.info(f"✅ Created host: {hostname} ({ip}) via proxy {proxy_id} - ID: {host_id}")
 
             return host_id
 
@@ -321,21 +365,26 @@ class AutoDiscovery:
             if not self.zapi.login():
                 return False
 
-            # Get proxy ID (optional - if proxy not found, hosts monitored by server)
+            # CRITICAL: Get proxy ID - REQUIRED for remote network monitoring
             proxy_name = zabbix_config.get('proxy_name', '')
-            if proxy_name:
-                self.proxy_id = self.zapi.get_proxy_id(proxy_name)
+            if not proxy_name:
+                logger.error("❌ CRITICAL: proxy_name not configured in config.yml!")
+                logger.error("   Remote network monitoring requires a proxy!")
+                return False
 
-                if self.proxy_id:
-                    logger.info(f"✅ Using proxy: {proxy_name} (ID: {self.proxy_id})")
-                else:
-                    logger.warning(f"⚠️ Proxy '{proxy_name}' not found. Hosts will be monitored by server directly.")
-                    self.proxy_id = None
-            else:
-                logger.info("No proxy configured. Hosts will be monitored by server directly.")
-                self.proxy_id = None
+            self.proxy_id = self.zapi.get_proxy_id(proxy_name)
 
-            logger.info(f"Final proxy_id for host creation: {self.proxy_id}")
+            if not self.proxy_id:
+                logger.error("❌ CRITICAL: Proxy not found! Cannot continue without proxy.")
+                logger.error("   Please create proxy in Zabbix Server first:")
+                logger.error("   1. Go to Administration → Proxies → Create proxy")
+                logger.error(f"   2. Proxy name: {proxy_name}")
+                logger.error("   3. Proxy mode: Active")
+                logger.error("   4. Wait for proxy to connect (check proxy logs)")
+                return False
+
+            logger.info(f"✅ Using proxy: {proxy_name} (ID: {self.proxy_id})")
+            logger.info(f"✅ All hosts will be monitored via this proxy")
             return True
 
         except Exception as e:
@@ -426,13 +475,15 @@ class AutoDiscovery:
 
                 # Get templates
                 template_ids = self.get_template_for_host(host)
+                device_type = host.get('device_type', 'unknown')
 
-                # Create host WITH or WITHOUT proxy depending on proxy_id
+                # Create host WITH proxy (REQUIRED for remote monitoring)
                 host_id = self.zapi.create_host(
                     host_data=host,
-                    proxy_id=self.proxy_id,  # Can be None
+                    proxy_id=self.proxy_id,  # REQUIRED
                     group_ids=group_ids,
-                    template_ids=template_ids
+                    template_ids=template_ids,
+                    device_type=device_type
                 )
 
                 if host_id:
