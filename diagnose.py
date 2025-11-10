@@ -57,9 +57,17 @@ def main():
         if ad.connect_zabbix():
             print("   ✓ Connected to Zabbix successfully")
             print(f"   ℹ Proxy ID: {ad.proxy_id}")
+            print(f"   ℹ Proxy ID type: {type(ad.proxy_id)}")
 
             if ad.proxy_id:
-                print("   ✓ Proxy found and will be used")
+                try:
+                    proxy_int = int(ad.proxy_id)
+                    print(f"   ✓ Proxy ID can be converted to int: {proxy_int}")
+                    print("   ✓ Proxy found and will be used")
+                except (ValueError, TypeError) as e:
+                    print(f"   ✗ WARNING: Proxy ID cannot be converted to integer!")
+                    print(f"   ℹ Error: {e}")
+                    print("   ℹ This will cause 'Invalid parameter proxyid' error!")
             else:
                 print("   ⚠ Proxy not found - hosts will be monitored by server directly")
         else:

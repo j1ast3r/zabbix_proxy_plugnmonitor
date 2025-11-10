@@ -86,7 +86,11 @@ class ZabbixAPI:
             return False
 
     def get_proxy_id(self, proxy_name: str) -> Optional[str]:
-        """Get proxy ID by name"""
+        """Get proxy ID by name
+
+        Returns:
+            Proxy ID as string (can be converted to int) or None if not found
+        """
         try:
             proxies = self._call('proxy.get', {
                 'output': ['proxyid', 'name'],
@@ -94,8 +98,16 @@ class ZabbixAPI:
             })
 
             if proxies:
-                proxy_id = proxies[0]['proxyid']
+                proxy_id = str(proxies[0]['proxyid'])  # Ensure it's string
                 logger.info(f"Found proxy '{proxy_name}' with ID: {proxy_id}")
+
+                # Validate that it's a valid number
+                try:
+                    int(proxy_id)
+                except ValueError:
+                    logger.error(f"Proxy ID is not a valid number: {proxy_id}")
+                    return None
+
                 return proxy_id
 
             logger.warning(f"Proxy not found: {proxy_name}")
@@ -233,9 +245,18 @@ class ZabbixAPI:
             }
 
             # Add proxy if specified
+            # CRITICAL: Zabbix 7.0 requires proxyid as INTEGER, not string!
             if proxy_id and proxy_id != '0':
-                params['proxyid'] = proxy_id
-                logger.info(f"Adding host {hostname} with proxy ID: {proxy_id}")
+                try:
+                    # Convert to integer
+                    params['proxyid'] = int(proxy_id)
+                    logger.info(f"Adding host {hostname} with proxy ID: {proxy_id} (int: {int(proxy_id)})")
+                except (ValueError, TypeError) as e:
+                    logger.error(f"Invalid proxy ID format: {proxy_id}, error: {e}")
+                    return {
+                        'success': False,
+                        'error': f'Invalid proxy ID format: {proxy_id}. Must be a number.'
+                    }
             else:
                 logger.info(f"Adding host {hostname} without proxy (monitored by server)")
 
@@ -256,7 +277,9 @@ class ZabbixAPI:
             }
 
             # Create host
-            logger.info(f"Creating host {hostname} with params: {params}")
+            logger.info(f"Creating host {hostname}...")
+            logger.debug(f"Host creation params: {json.dumps(params, indent=2, default=str)}")
+
             result = self._call('host.create', params)
             host_id = result['hostids'][0]
             logger.info(f"✅ Created host: {hostname} ({ip}) - ID: {host_id}")
