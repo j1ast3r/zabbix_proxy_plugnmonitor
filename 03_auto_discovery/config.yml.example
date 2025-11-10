@@ -1,8 +1,10 @@
-# Plug & Monitor - Configuration Example
-# Copy this file to /opt/plug-monitor/config/config.yml and edit
+# =============================================================================
+# Plug & Monitor - Configuration File
+# =============================================================================
+# Copy this file to /opt/plug-monitor/config/config.yml and configure
 
 # =============================================================================
-# ZABBIX SERVER CONFIGURATION
+# ZABBIX SERVER CONNECTION
 # =============================================================================
 zabbix:
   # Zabbix Server IP or hostname
@@ -10,174 +12,207 @@ zabbix:
   server_port: 10051
 
   # Zabbix API URL (JSON-RPC endpoint)
-  # Format: http://<server>/api_jsonrpc.php
-  # Or: http://<server>/zabbix/api_jsonrpc.php (if in subdirectory)
+  # Examples:
+  #   - http://192.168.1.10/api_jsonrpc.php
+  #   - http://monitoring.example.com/zabbix/api_jsonrpc.php
   api_url: http://192.168.1.10/api_jsonrpc.php
 
-  # API Authentication - Choose ONE method:
+  # =============================================================================
+  # API AUTHENTICATION - Choose ONE method
+  # =============================================================================
 
   # METHOD 1: API Token (Recommended for Zabbix 7.0+)
   # Create token in: Administration → API tokens → Create API token
-  # Leave api_user and api_password empty if using token
-  api_token: ""  # Example: "a1b2c3d4e5f6g7h8i9j0..."
+  # Leave api_user and api_password EMPTY (or "") if using token
+  api_token: ""
+  # Example: api_token: "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
 
-  # METHOD 2: Username + Password (Legacy, still works)
-  # Only use if api_token is empty
+  # METHOD 2: Username + Password (Legacy, works for all versions)
+  # Leave api_token EMPTY (or "") if using this method
   api_user: Admin
   api_password: zabbix
 
-  # Proxy Configuration
-  # This name MUST match the proxy name in Zabbix Server frontend
-  # IMPORTANT: Proxy is REQUIRED for monitoring remote networks!
-  proxy_name: PlugMonitor-Proxy-RPI001
+  # =============================================================================
+  # PROXY CONFIGURATION (CRITICAL!)
+  # =============================================================================
+  # This name MUST EXACTLY match the proxy name in Zabbix Server frontend!
+  # Proxy is REQUIRED for monitoring remote networks that server can't reach directly
+  # Format: Use unique name like "PlugMonitor-Proxy-<location>"
+  proxy_name: PlugMonitor-Proxy-Office01
+
+  # IMPORTANT: After installation, you MUST manually add this proxy in Zabbix:
+  # 1. Go to: Administration → Proxies
+  # 2. Click: Create proxy
+  # 3. Name: Must match 'proxy_name' above EXACTLY
+  # 4. Mode: Active
+  # 5. Click: Add
 
 # =============================================================================
-# NETWORK SCANNING CONFIGURATION
+# NETWORK SCANNING
 # =============================================================================
 network:
-  # Network range to scan in CIDR notation
-  # Examples:
-  #   Single network: 192.168.1.0/24
-  #   Multiple networks: ["192.168.1.0/24", "192.168.2.0/24"]
+  # Network range(s) to scan in CIDR notation
+  # Single network:
   scan_range: 192.168.1.0/24
 
-  # Scan interval in seconds
-  # 3600 = 1 hour, 1800 = 30 minutes, 7200 = 2 hours
+  # Multiple networks (uncomment and use this format):
+  # scan_range:
+  #   - 192.168.1.0/24
+  #   - 192.168.2.0/24
+  #   - 10.0.0.0/24
+
+  # How often to scan automatically (seconds)
+  # 3600 = 1 hour, 1800 = 30 min, 7200 = 2 hours
   scan_interval: 3600
 
-  # Nmap options for scanning
-  # -sn: Ping scan (no port scan) - fastest
-  # -T4: Aggressive timing
-  # IMPORTANT: Don't use -O (OS detection) in regular scans - too slow!
+  # Nmap scanning options
+  # -sn: Ping scan only (fast, no port scan)
+  # -T4: Aggressive timing (faster)
+  # WARNING: Don't use -O (OS detection) in regular scans - very slow!
   nmap_options: "-sn -T4"
 
-  # IPs to exclude from scanning (gateway, servers, etc)
+  # IPs to exclude from scanning (gateways, servers, this Raspberry Pi, etc)
   exclude_ips:
-    - 192.168.1.1      # Router/Gateway
-    - 192.168.1.10     # Zabbix Server
-    - 192.168.1.100    # This Raspberry Pi
+    - 192.168.1.1          # Router/Gateway
+    - 192.168.1.10         # Zabbix Server
+    - 192.168.1.100        # This Raspberry Pi
 
 # =============================================================================
-# AUTO-DISCOVERY CONFIGURATION
+# AUTO-DISCOVERY & HOST REGISTRATION
 # =============================================================================
 discovery:
-  # Enable automatic discovery
+  # Enable automatic discovery daemon
   enabled: true
 
   # Automatically add discovered hosts to Zabbix
+  # If false, hosts are only scanned but not added to Zabbix
   auto_add_hosts: true
 
-  # Automatically apply templates based on device type/OS
+  # Automatically apply templates based on OS/device type
   auto_apply_templates: true
 
   # Default host groups for ALL discovered hosts
+  # These groups will be created if they don't exist
   default_groups:
     - "Discovered hosts"
     - "PlugMonitor"
 
-  # Check interval for processing new scan results (seconds)
+  # How often to check for new scan results (seconds)
   check_interval: 60
 
-  # Template mapping rules
-  # CRITICAL: Use EXACT template names from Zabbix 7.0 LTS!
-  # These are the correct out-of-the-box template names in Zabbix 7.0 LTS
-  # Check in your Zabbix: Data collection → Templates
+  # =============================================================================
+  # TEMPLATE MAPPING - CRITICAL FOR AUTO-DISCOVERY
+  # =============================================================================
+  # Use EXACT template names from your Zabbix server!
+  # Check: Data collection → Templates
+  #
+  # Zabbix 7.0 LTS Template Names:
+  # - Windows by Zabbix agent active
+  # - Linux by Zabbix agent active
+  # - Generic SNMP
+  # - ICMP Ping
+  #
+  # For older Zabbix versions, check exact names in your instance
   template_mapping:
-    # Windows computers - uses Zabbix agent active
+    # Windows computers (Server & Workstation)
     windows:
       - "Windows by Zabbix agent active"
 
-    # Linux servers/workstations - uses Zabbix agent active
+    # Linux servers and workstations
     linux:
       - "Linux by Zabbix agent active"
 
-    # Network devices (switches, routers) - uses SNMP
+    # Network devices (switches, routers, etc)
     network_device:
       - "Generic SNMP"
 
-    # Printers - uses SNMP
+    # Printers
     printer:
       - "Generic SNMP"
 
-    # Servers (if OS unknown but detected as server)
-    server:
-      - "Linux by Zabbix agent active"
-
-    # Workstations (if OS unknown)
-    workstation:
-      - "ICMP Ping"
-
-    # IoT devices
+    # IoT devices (Raspberry Pi, Arduino, etc)
     iot:
       - "ICMP Ping"
 
-    # Unknown devices (fallback) - basic ping monitoring
+    # Unknown devices (fallback - only ICMP ping)
     unknown:
       - "ICMP Ping"
 
-  # Host group mapping by device type
-  # Additional groups added based on detected device type
+  # =============================================================================
+  # HOST GROUP MAPPING BY DEVICE TYPE
+  # =============================================================================
+  # Additional groups assigned based on detected device type
   group_mapping:
-    server: ["Servers", "Linux servers"]
-    workstation: ["Workstations"]
-    network_device: ["Network devices"]
-    printer: ["Printers"]
-    iot: ["IoT devices"]
+    server:
+      - "Servers"
+      - "Linux servers"
+    workstation:
+      - "Workstations"
+    network_device:
+      - "Network devices"
+    printer:
+      - "Printers"
+    iot:
+      - "IoT devices"
 
-  # Interface configuration for new hosts
+  # =============================================================================
+  # INTERFACE CONFIGURATION
+  # =============================================================================
   interface:
     type: 1              # 1=Agent, 2=SNMP, 3=IPMI, 4=JMX
     port: 10050          # Zabbix agent port
-    useip: 1             # 1=Use IP, 0=Use DNS
+    useip: 1             # 1=Use IP, 0=Use DNS name
     dns: ""              # DNS name (empty if using IP)
 
-  # Inventory settings
+  # Inventory settings for new hosts
   inventory:
     mode: 0              # 0=Manual, 1=Automatic
     populate: true       # Auto-populate from scan data
 
 # =============================================================================
-# WEB DASHBOARD CONFIGURATION
+# WEB DASHBOARD
 # =============================================================================
 dashboard:
   # Listen address
-  # 0.0.0.0 = all interfaces (accessible from network)
-  # 127.0.0.1 = localhost only (accessible only from RPi)
+  # 0.0.0.0 = all network interfaces (accessible from network)
+  # 127.0.0.1 = localhost only (accessible only from Raspberry Pi)
   host: 0.0.0.0
 
   # Web interface port
   port: 8080
 
   # Admin credentials for dashboard
-  # CHANGE THESE IMMEDIATELY!
+  # CRITICAL: Change these immediately after installation!
   admin_user: admin
   admin_password: changeme
 
   # Secret key for session encryption
-  # Generate new one with: openssl rand -hex 32
-  # CRITICAL: Change this to a random string!
-  secret_key: change-this-to-random-string-generated-by-openssl-rand
+  # Generate with: openssl rand -hex 32
+  # CRITICAL: Change this to a random value!
+  secret_key: "CHANGE-THIS-TO-RANDOM-STRING-FROM-OPENSSL-RAND"
 
 # =============================================================================
 # AUTOMATION LEVEL
 # =============================================================================
-# 1 = Basic (ICMP + SNMP only, no agents)
-#     - Simple ping monitoring
-#     - SNMP for network devices
-#     - No detailed metrics
+# Controls which features are enabled
 #
-# 2 = Semi-Auto (+ Agent deployment scripts available)
-#     - Everything from Level 1
-#     - Agent deployment tools (PowerShell, Ansible)
-#     - Detailed host metrics when agents installed
-#     - PSK encryption support
+# Level 1 - Basic (ICMP + SNMP only, no agents)
+#   - Simple ping monitoring
+#   - SNMP for network devices
+#   - No detailed host metrics
 #
-# 3 = Full Auto (+ AD integration, GPO deployment)
-#     - Everything from Level 2
-#     - Active Directory synchronization
-#     - Automatic GPO-based agent deployment
-#     - Enterprise features
-
+# Level 2 - Semi-Auto (+ Agent deployment tools)
+#   - Everything from Level 1
+#   - PowerShell deployment scripts
+#   - Ansible playbooks
+#   - Detailed metrics when agents installed
+#   - PSK encryption support
+#
+# Level 3 - Full Auto (+ AD integration, GPO deployment)
+#   - Everything from Level 2
+#   - Active Directory synchronization
+#   - Automatic GPO-based agent deployment
+#   - Enterprise features
 automation_level: 2
 
 # =============================================================================
@@ -193,7 +228,7 @@ active_directory:
   use_ssl: false         # Set to true for LDAPS (port 636)
 
   # Service account credentials
-  # This account needs read access to computer objects
+  # Account needs read access to computer objects
   bind_dn: "CN=ZabbixService,OU=ServiceAccounts,DC=example,DC=com"
   bind_password: "YourSecurePassword"
 
@@ -201,7 +236,8 @@ active_directory:
   base_dn: "OU=Computers,DC=example,DC=com"
 
   # LDAP search filter
-  # Default: all computers
+  # Examples:
+  # All computers:
   search_filter: "(objectClass=computer)"
 
   # Only enabled computers:
@@ -219,23 +255,23 @@ active_directory:
   inactive_days: 90
 
 # =============================================================================
-# PSK ENCRYPTION SETTINGS
+# PSK ENCRYPTION (Level 2+)
 # =============================================================================
 psk:
   # Enable PSK encryption for agent communication
   enabled: false
 
-  # Auto-generate PSK keys for new hosts
+  # Auto-generate unique PSK keys for each host
   auto_generate: false
 
   # PSK key length (256 or 512 bits)
   key_length: 256
 
-  # Key storage directory
+  # Directory to store generated PSK keys
   key_dir: /opt/plug-monitor/data/keys
 
 # =============================================================================
-# LOGGING CONFIGURATION
+# LOGGING
 # =============================================================================
 logging:
   # Log level: DEBUG, INFO, WARNING, ERROR, CRITICAL
@@ -276,7 +312,7 @@ advanced:
   scan_data_dir: /opt/plug-monitor/data/scans
 
 # =============================================================================
-# NOTIFICATION SETTINGS (Optional)
+# NOTIFICATIONS (Optional)
 # =============================================================================
 notifications:
   # Enable notifications
@@ -308,7 +344,7 @@ notifications:
 # PERFORMANCE TUNING (Advanced users only)
 # =============================================================================
 performance:
-  # Maximum concurrent scans
+  # Maximum concurrent network scans
   max_concurrent_scans: 1
 
   # Scan timeout (seconds)
@@ -320,3 +356,7 @@ performance:
   # Cache settings
   cache_enabled: true
   cache_ttl: 300  # seconds
+
+# =============================================================================
+# END OF CONFIGURATION
+# =============================================================================

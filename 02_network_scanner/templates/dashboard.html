@@ -35,14 +35,14 @@
         }
 
         .container {
-            max-width: 1400px;
+            max-width: 1600px;
             margin: 2rem auto;
             padding: 0 2rem;
         }
 
         .stats-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
             gap: 1.5rem;
             margin-bottom: 2rem;
         }
@@ -52,7 +52,7 @@
             border: 1px solid #334155;
             border-radius: 0.5rem;
             padding: 1.5rem;
-            transition: transform 0.2s;
+            transition: transform 0.2s, border-color 0.2s;
         }
 
         .stat-card:hover {
@@ -73,6 +73,10 @@
             font-weight: 700;
             color: #3b82f6;
         }
+
+        .stat-card.success .value { color: #10b981; }
+        .stat-card.warning .value { color: #f59e0b; }
+        .stat-card.error .value { color: #ef4444; }
 
         .controls {
             background: #1e293b;
@@ -118,6 +122,9 @@
             font-weight: 600;
             cursor: pointer;
             transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
         }
 
         .btn-primary {
@@ -143,6 +150,38 @@
             background: #64748b;
         }
 
+        .btn-success {
+            background: #10b981;
+            color: white;
+        }
+
+        .btn-success:hover {
+            background: #059669;
+        }
+
+        .btn-danger {
+            background: #ef4444;
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background: #dc2626;
+        }
+
+        .btn-warning {
+            background: #f59e0b;
+            color: white;
+        }
+
+        .btn-warning:hover {
+            background: #d97706;
+        }
+
+        .btn-small {
+            padding: 0.375rem 0.75rem;
+            font-size: 0.875rem;
+        }
+
         .hosts-table {
             background: #1e293b;
             border: 1px solid #334155;
@@ -156,10 +195,19 @@
             align-items: center;
             padding: 1.5rem;
             border-bottom: 1px solid #334155;
+            flex-wrap: wrap;
+            gap: 1rem;
         }
 
         .table-header h2 {
             color: #f1f5f9;
+        }
+
+        .table-header-controls {
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+            flex-wrap: wrap;
         }
 
         .filter-input {
@@ -168,6 +216,7 @@
             border: 1px solid #334155;
             border-radius: 0.375rem;
             color: #e2e8f0;
+            min-width: 200px;
         }
 
         table {
@@ -198,6 +247,10 @@
             background: #334155;
         }
 
+        tbody tr.in-zabbix {
+            background: rgba(16, 185, 129, 0.05);
+        }
+
         td {
             padding: 1rem;
         }
@@ -213,6 +266,16 @@
         .status-online {
             background: #065f46;
             color: #d1fae5;
+        }
+
+        .status-in-zabbix {
+            background: #064e3b;
+            color: #d1fae5;
+        }
+
+        .status-not-in-zabbix {
+            background: #7c2d12;
+            color: #fed7aa;
         }
 
         .type-badge {
@@ -250,10 +313,99 @@
             border-radius: 0.375rem;
             margin-bottom: 1rem;
             display: none;
+            align-items: center;
+            gap: 1rem;
         }
 
         .scan-status.active {
-            display: block;
+            display: flex;
+        }
+
+        .notification {
+            position: fixed;
+            top: 2rem;
+            right: 2rem;
+            padding: 1rem 1.5rem;
+            border-radius: 0.5rem;
+            color: white;
+            font-weight: 600;
+            box-shadow: 0 10px 15px rgba(0, 0, 0, 0.3);
+            z-index: 1000;
+            animation: slideIn 0.3s ease-out;
+        }
+
+        .notification.success {
+            background: #10b981;
+        }
+
+        .notification.error {
+            background: #ef4444;
+        }
+
+        .notification.info {
+            background: #3b82f6;
+        }
+
+        @keyframes slideIn {
+            from {
+                transform: translateX(400px);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+
+        .action-buttons {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.8);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal.active {
+            display: flex;
+        }
+
+        .modal-content {
+            background: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 0.5rem;
+            padding: 2rem;
+            max-width: 500px;
+            width: 90%;
+        }
+
+        .modal-header {
+            margin-bottom: 1.5rem;
+        }
+
+        .modal-header h3 {
+            color: #f1f5f9;
+            font-size: 1.5rem;
+        }
+
+        .modal-body {
+            margin-bottom: 1.5rem;
+            color: #cbd5e1;
+        }
+
+        .modal-footer {
+            display: flex;
+            gap: 1rem;
+            justify-content: flex-end;
         }
 
         @media (max-width: 768px) {
@@ -268,20 +420,33 @@
             th, td {
                 padding: 0.75rem 0.5rem;
             }
+
+            .action-buttons {
+                flex-direction: column;
+            }
         }
     </style>
 </head>
 <body>
     <div class="header">
-        <h1>Scan & Monitoring</h1>
-        <p>Automated Network Monitoring Dashboard</p>
+        <h1>🚀 Plug & Monitor Dashboard</h1>
+        <p>Automated Network Monitoring & Host Management</p>
     </div>
 
     <div class="container">
+        <!-- Statistics -->
         <div class="stats-grid">
             <div class="stat-card">
-                <h3>Total Hosts</h3>
+                <h3>Total Discovered</h3>
                 <div class="value" id="totalHosts">0</div>
+            </div>
+            <div class="stat-card success">
+                <h3>In Zabbix</h3>
+                <div class="value" id="inZabbixCount">0</div>
+            </div>
+            <div class="stat-card warning">
+                <h3>Not In Zabbix</h3>
+                <div class="value" id="notInZabbixCount">0</div>
             </div>
             <div class="stat-card">
                 <h3>Last Scan</h3>
@@ -297,22 +462,40 @@
             </div>
         </div>
 
+        <!-- Network Scanner Controls -->
         <div class="controls">
-            <h2>Network Scanner</h2>
+            <h2>📡 Network Scanner</h2>
             <div class="scan-status" id="scanStatus">
-                <div class="spinner"></div> Scanning network...
+                <div class="spinner"></div>
+                <span>Scanning network...</span>
             </div>
             <div class="control-group">
                 <input type="text" id="scanTarget" placeholder="192.168.1.0/24" value="">
-                <button class="btn-primary" id="scanBtn" onclick="startScan()">Start Scan</button>
-                <button class="btn-secondary" onclick="refreshResults()">Refresh</button>
+                <button class="btn-primary" id="scanBtn" onclick="startScan()">
+                    🔍 Start Scan
+                </button>
+                <button class="btn-secondary" onclick="refreshResults()">
+                    🔄 Refresh
+                </button>
             </div>
         </div>
 
+        <!-- Host Management -->
         <div class="hosts-table">
             <div class="table-header">
-                <h2>Discovered Hosts</h2>
-                <input type="text" class="filter-input" id="filterInput" placeholder="Filter hosts..." onkeyup="filterHosts()">
+                <h2>💻 Discovered Hosts</h2>
+                <div class="table-header-controls">
+                    <input type="text" class="filter-input" id="filterInput" placeholder="Filter hosts..." onkeyup="filterHosts()">
+                    <button class="btn-success btn-small" onclick="addAllHosts()">
+                        ➕ Add All to Zabbix
+                    </button>
+                    <button class="btn-warning btn-small" onclick="showForceAddModal()">
+                        🔄 Force Re-Add All
+                    </button>
+                    <button class="btn-danger btn-small" onclick="clearProcessed()">
+                        🗑️ Clear Processed
+                    </button>
+                </div>
             </div>
             <div id="tableContent">
                 <div class="loading">
@@ -323,9 +506,26 @@
         </div>
     </div>
 
+    <!-- Confirmation Modal -->
+    <div class="modal" id="confirmModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="modalTitle">Confirm Action</h3>
+            </div>
+            <div class="modal-body" id="modalBody">
+                Are you sure?
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary" onclick="closeModal()">Cancel</button>
+                <button class="btn-primary" id="modalConfirm" onclick="confirmAction()">Confirm</button>
+            </div>
+        </div>
+    </div>
+
     <script>
         let hosts = [];
         let scanCheckInterval = null;
+        let pendingAction = null;
 
         // Load initial data
         loadConfig();
@@ -340,6 +540,38 @@
             }
         }, 30000);
 
+        // Utility Functions
+        function showNotification(message, type = 'info') {
+            const notification = document.createElement('div');
+            notification.className = `notification ${type}`;
+            notification.textContent = message;
+            document.body.appendChild(notification);
+
+            setTimeout(() => {
+                notification.remove();
+            }, 3000);
+        }
+
+        function showModal(title, body, action) {
+            document.getElementById('modalTitle').textContent = title;
+            document.getElementById('modalBody').textContent = body;
+            document.getElementById('confirmModal').classList.add('active');
+            pendingAction = action;
+        }
+
+        function closeModal() {
+            document.getElementById('confirmModal').classList.remove('active');
+            pendingAction = null;
+        }
+
+        function confirmAction() {
+            if (pendingAction) {
+                pendingAction();
+            }
+            closeModal();
+        }
+
+        // API Functions
         async function loadConfig() {
             try {
                 const response = await fetch('/api/config');
@@ -358,6 +590,7 @@
                 renderTable();
             } catch (error) {
                 console.error('Error loading results:', error);
+                showNotification('Error loading scan results', 'error');
             }
         }
 
@@ -369,6 +602,8 @@
                 document.getElementById('totalHosts').textContent = stats.total_hosts;
                 document.getElementById('serverCount').textContent = stats.hosts_by_type.server || 0;
                 document.getElementById('workstationCount').textContent = stats.hosts_by_type.workstation || 0;
+                document.getElementById('inZabbixCount').textContent = stats.in_zabbix_count || 0;
+                document.getElementById('notInZabbixCount').textContent = stats.not_in_zabbix_count || 0;
 
                 if (stats.last_scan) {
                     const date = new Date(stats.last_scan);
@@ -395,15 +630,16 @@
                 });
 
                 if (response.ok) {
-                    // Start checking scan status
+                    showNotification('Network scan started', 'info');
                     scanCheckInterval = setInterval(checkScanStatus, 2000);
                 } else {
-                    alert('Error starting scan');
+                    showNotification('Error starting scan', 'error');
                     btn.disabled = false;
                     status.classList.remove('active');
                 }
             } catch (error) {
                 console.error('Error starting scan:', error);
+                showNotification('Error starting scan', 'error');
                 btn.disabled = false;
                 status.classList.remove('active');
             }
@@ -415,17 +651,110 @@
                 const data = await response.json();
 
                 if (!data.in_progress) {
-                    // Scan complete
                     clearInterval(scanCheckInterval);
                     document.getElementById('scanBtn').disabled = false;
                     document.getElementById('scanStatus').classList.remove('active');
 
-                    // Reload results
                     await loadResults();
                     await loadStats();
+                    showNotification('Scan completed', 'success');
                 }
             } catch (error) {
                 console.error('Error checking scan status:', error);
+            }
+        }
+
+        async function addSingleHost(host, force = false) {
+            try {
+                const response = await fetch('/api/host/add', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({host: host, force: force})
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    showNotification(`Host ${host.hostname} added successfully`, 'success');
+                    await loadResults();
+                    await loadStats();
+                } else {
+                    showNotification(`Error adding host: ${data.message}`, 'error');
+                }
+            } catch (error) {
+                console.error('Error adding host:', error);
+                showNotification('Error adding host', 'error');
+            }
+        }
+
+        async function addAllHosts() {
+            try {
+                const response = await fetch('/api/hosts/add-all', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({force: false})
+                });
+
+                if (response.ok) {
+                    showNotification('All hosts added to queue', 'success');
+                    setTimeout(async () => {
+                        await loadResults();
+                        await loadStats();
+                    }, 2000);
+                } else {
+                    showNotification('Error adding hosts', 'error');
+                }
+            } catch (error) {
+                console.error('Error adding all hosts:', error);
+                showNotification('Error adding hosts', 'error');
+            }
+        }
+
+        async function forceAddAllHosts() {
+            try {
+                const response = await fetch('/api/hosts/add-all', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({force: true})
+                });
+
+                if (response.ok) {
+                    showNotification('Force re-adding all hosts', 'success');
+                    setTimeout(async () => {
+                        await loadResults();
+                        await loadStats();
+                    }, 2000);
+                } else {
+                    showNotification('Error force re-adding hosts', 'error');
+                }
+            } catch (error) {
+                console.error('Error force re-adding hosts:', error);
+                showNotification('Error force re-adding hosts', 'error');
+            }
+        }
+
+        function showForceAddModal() {
+            showModal(
+                'Force Re-Add All Hosts',
+                'This will delete and recreate all hosts in Zabbix. Use this if hosts were added without proper configuration. Continue?',
+                forceAddAllHosts
+            );
+        }
+
+        async function clearProcessed() {
+            try {
+                const response = await fetch('/api/hosts/clear-processed', {
+                    method: 'POST'
+                });
+
+                if (response.ok) {
+                    showNotification('Processed hosts list cleared', 'success');
+                } else {
+                    showNotification('Error clearing processed hosts', 'error');
+                }
+            } catch (error) {
+                console.error('Error clearing processed hosts:', error);
+                showNotification('Error clearing processed hosts', 'error');
             }
         }
 
@@ -438,24 +767,42 @@
             }
 
             let html = '<table><thead><tr>';
+            html += '<th>Status</th>';
             html += '<th>IP Address</th>';
             html += '<th>Hostname</th>';
             html += '<th>Type</th>';
             html += '<th>OS</th>';
             html += '<th>MAC Address</th>';
             html += '<th>Vendor</th>';
-            html += '<th>Status</th>';
+            html += '<th>Actions</th>';
             html += '</tr></thead><tbody>';
 
             hosts.forEach(host => {
-                html += '<tr>';
+                const rowClass = host.in_zabbix ? 'in-zabbix' : '';
+                html += `<tr class="${rowClass}">`;
+
+                // Status
+                const statusBadge = host.in_zabbix
+                    ? '<span class="status-badge status-in-zabbix">✓ In Zabbix</span>'
+                    : '<span class="status-badge status-not-in-zabbix">○ Not Added</span>';
+                html += `<td>${statusBadge}</td>`;
+
                 html += `<td>${host.ip}</td>`;
                 html += `<td>${host.hostname}</td>`;
                 html += `<td><span class="type-badge">${host.device_type}</span></td>`;
                 html += `<td>${host.os_guess}</td>`;
                 html += `<td>${host.mac || '-'}</td>`;
                 html += `<td>${host.vendor || '-'}</td>`;
-                html += `<td><span class="status-badge status-online">Online</span></td>`;
+
+                // Actions
+                html += '<td><div class="action-buttons">';
+                if (!host.in_zabbix) {
+                    html += `<button class="btn-success btn-small" onclick='addSingleHost(${JSON.stringify(host)})'>➕ Add</button>`;
+                } else {
+                    html += `<button class="btn-warning btn-small" onclick='addSingleHost(${JSON.stringify(host)}, true)'>🔄 Re-Add</button>`;
+                }
+                html += '</div></td>';
+
                 html += '</tr>';
             });
 
@@ -476,6 +823,7 @@
         function refreshResults() {
             loadResults();
             loadStats();
+            showNotification('Refreshed', 'info');
         }
     </script>
 </body>
