@@ -181,8 +181,12 @@ class ZabbixAPI:
             return False
 
     def create_host(self, host_data: Dict, proxy_id: Optional[str], group_ids: List[Dict],
-                    template_ids: List[str], force: bool = False) -> Optional[str]:
-        """Create host in Zabbix"""
+                    template_ids: List[str], force: bool = False) -> Dict:
+        """Create host in Zabbix
+
+        Returns:
+            Dict with 'success': bool, 'host_id': str (if success), 'error': str (if failure)
+        """
         try:
             hostname = host_data['hostname']
             ip = host_data['ip']
@@ -192,11 +196,26 @@ class ZabbixAPI:
             if existing:
                 if force:
                     logger.info(f"Force mode: Deleting existing host {hostname}")
-                    self.delete_host(existing['hostid'])
+                    if not self.delete_host(existing['hostid']):
+                        return {
+                            'success': False,
+                            'error': f'Failed to delete existing host {hostname}'
+                        }
                     time.sleep(1)  # Wait a bit before recreating
                 else:
                     logger.info(f"Host already exists: {hostname} ({ip})")
-                    return existing['hostid']
+                    return {
+                        'success': True,
+                        'host_id': existing['hostid'],
+                        'message': 'Host already exists'
+                    }
+
+            # Validate inputs
+            if not group_ids:
+                return {
+                    'success': False,
+                    'error': 'No host groups specified'
+                }
 
             # Prepare host creation parameters
             params = {
@@ -223,7 +242,9 @@ class ZabbixAPI:
             # Add templates if specified
             if template_ids:
                 params['templates'] = [{'templateid': tid} for tid in template_ids]
-                logger.debug(f"Templates: {template_ids}")
+                logger.info(f"Applying templates: {template_ids}")
+            else:
+                logger.warning(f"No templates found for host {hostname}")
 
             # Add inventory
             params['inventory_mode'] = 0  # Manual
@@ -235,15 +256,24 @@ class ZabbixAPI:
             }
 
             # Create host
+            logger.info(f"Creating host {hostname} with params: {params}")
             result = self._call('host.create', params)
             host_id = result['hostids'][0]
             logger.info(f"✅ Created host: {hostname} ({ip}) - ID: {host_id}")
 
-            return host_id
+            return {
+                'success': True,
+                'host_id': host_id,
+                'message': f'Host {hostname} created successfully'
+            }
 
         except Exception as e:
-            logger.error(f"❌ Error creating host {host_data.get('hostname')}: {e}")
-            return None
+            error_msg = str(e)
+            logger.error(f"❌ Error creating host {host_data.get('hostname')}: {error_msg}")
+            return {
+                'success': False,
+                'error': error_msg
+            }
 
     def get_all_hosts(self) -> List[Dict]:
         """Get all hosts from Zabbix"""
@@ -403,7 +433,7 @@ class AutoDiscovery:
                 template_ids = self.get_template_for_host(host)
 
                 # Create host
-                host_id = self.zapi.create_host(
+                result = self.zapi.create_host(
                     host_data=host,
                     proxy_id=self.proxy_id,
                     group_ids=group_ids,
@@ -411,11 +441,13 @@ class AutoDiscovery:
                     force=force_add
                 )
 
-                if host_id:
+                if result['success']:
                     added_count += 1
                     self.processed_hosts.add(host_key)
+                    logger.info(f"✅ {host['hostname']}: {result.get('message', 'Added')}")
                 else:
                     error_count += 1
+                    logger.error(f"❌ {host['hostname']}: {result.get('error', 'Unknown error')}")
 
             logger.info(f"✅ Added: {added_count}, ⏭️  Skipped: {skipped_count}, ❌ Errors: {error_count}")
 
@@ -425,16 +457,26 @@ class AutoDiscovery:
         except Exception as e:
             logger.error(f"Error processing scan results: {e}")
 
-    def add_single_host(self, host_data: Dict, force: bool = False) -> bool:
-        """Add a single host to Zabbix"""
+    def add_single_host(self, host_data: Dict, force: bool = False) -> Dict:
+        """Add a single host to Zabbix
+
+        Returns:
+            Dict with 'success': bool, 'message': str, 'error': str (if failed)
+        """
         try:
             discovery_config = self.config.get('discovery', {})
             default_groups = discovery_config.get('default_groups', ['Discovered hosts'])
             group_ids = self.zapi.get_host_groups(default_groups)
 
+            if not group_ids:
+                return {
+                    'success': False,
+                    'error': 'Failed to get/create host groups'
+                }
+
             template_ids = self.get_template_for_host(host_data)
 
-            host_id = self.zapi.create_host(
+            result = self.zapi.create_host(
                 host_data=host_data,
                 proxy_id=self.proxy_id,
                 group_ids=group_ids,
@@ -442,17 +484,21 @@ class AutoDiscovery:
                 force=force
             )
 
-            if host_id:
+            if result['success']:
                 host_key = f"{host_data['ip']}_{host_data['hostname']}"
                 self.processed_hosts.add(host_key)
                 self._save_processed()
-                return True
-
-            return False
+                return result
+            else:
+                return result
 
         except Exception as e:
-            logger.error(f"Error adding single host: {e}")
-            return False
+            error_msg = f"Exception in add_single_host: {str(e)}"
+            logger.error(error_msg)
+            return {
+                'success': False,
+                'error': error_msg
+            }
 
     def clear_processed_hosts(self):
         """Clear processed hosts list (for re-adding hosts)"""

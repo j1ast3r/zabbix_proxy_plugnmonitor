@@ -275,7 +275,13 @@ def add_single_host():
     if auto_discovery is None:
         return jsonify({
             'status': 'error',
-            'message': 'Auto-discovery not initialized'
+            'message': 'Auto-discovery not initialized. Check if config.yml is correct and Zabbix is accessible.'
+        }), 500
+
+    if auto_discovery.zapi is None:
+        return jsonify({
+            'status': 'error',
+            'message': 'Zabbix API not connected. Check Zabbix Server address and credentials in config.yml'
         }), 500
 
     try:
@@ -289,22 +295,30 @@ def add_single_host():
                 'message': 'No host data provided'
             }), 400
 
-        success = auto_discovery.add_single_host(host_data, force=force)
+        # Log the attempt
+        logger.info(f"Attempting to add host: {host_data.get('hostname')} ({host_data.get('ip')}), force={force}")
 
-        if success:
+        result = auto_discovery.add_single_host(host_data, force=force)
+
+        if result['success']:
             return jsonify({
                 'status': 'success',
-                'message': f"Host {host_data['hostname']} added successfully"
+                'message': result.get('message', f"Host {host_data['hostname']} added successfully")
             })
         else:
+            error_detail = result.get('error', 'Unknown error')
+            logger.error(f"Failed to add host {host_data['hostname']}: {error_detail}")
             return jsonify({
                 'status': 'error',
-                'message': f"Failed to add host {host_data['hostname']}"
+                'message': f"Failed to add host: {error_detail}"
             }), 500
 
     except Exception as e:
-        logger.error(f"Error adding single host: {e}", exc_info=True)
-        return jsonify({'status': 'error', 'message': str(e)}), 500
+        logger.error(f"Exception in add_single_host endpoint: {e}", exc_info=True)
+        return jsonify({
+            'status': 'error',
+            'message': f'Server error: {str(e)}'
+        }), 500
 
 
 @app.route('/api/hosts/add-all', methods=['POST'])
