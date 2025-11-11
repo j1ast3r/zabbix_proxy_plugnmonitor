@@ -254,11 +254,15 @@ class ZabbixAPI:
             }
 
             # Add proxy if specified
-            # CRITICAL: Zabbix 7.0 requires proxyid as INTEGER, not string!
+            # CRITICAL FIX for Zabbix 7.0: Need both 'monitored_by' AND 'proxyid'!
             if proxy_id and proxy_id != '0':
                 try:
+                    # Zabbix 7.0 requires:
+                    # 1. monitored_by = 1 (proxy) or 0 (server)
+                    # 2. proxyid as integer
+                    params['monitored_by'] = 1  # 1 = monitored by proxy
                     params['proxyid'] = int(proxy_id)
-                    logger.info(f"Adding host {hostname} with proxy ID: {int(proxy_id)}")
+                    logger.info(f"Adding host {hostname} with proxy ID: {int(proxy_id)} (monitored_by=1)")
                 except (ValueError, TypeError) as e:
                     logger.error(f"Invalid proxy ID format: {proxy_id}, error: {e}")
                     return {
@@ -266,6 +270,8 @@ class ZabbixAPI:
                         'error': f'Invalid proxy ID format: {proxy_id}. Must be a number.'
                     }
             else:
+                # Monitored by server directly
+                params['monitored_by'] = 0  # 0 = monitored by server
                 logger.info(f"Adding host {hostname} without proxy (monitored by server)")
 
             # Add templates if specified
