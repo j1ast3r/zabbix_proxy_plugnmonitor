@@ -2,6 +2,7 @@
 """
 Network Scanner for Plug & Monitor
 Discovers devices on network using nmap
+ENHANCED: Queries Zabbix agents for their actual hostname
 """
 
 import nmap
@@ -99,14 +100,24 @@ class NetworkScanner:
         try:
             host_data = self.nm[host]
 
-            # Get hostname
-            hostname = host_data.hostname() if host_data.hostname() else self._resolve_hostname(host)
-
             # Get state
             state = host_data.state()
 
             if state != 'up':
                 return None
+
+            # CRITICAL: First try to get hostname from Zabbix agent if it's running
+            # This ensures we use the EXACT hostname the agent reports!
+            agent_hostname = self._get_agent_hostname(host)
+
+            if agent_hostname:
+                # Agent found! Use its hostname
+                hostname = agent_hostname
+                logger.info(f"Using agent hostname for {host}: {hostname}")
+            else:
+                # No agent, fall back to DNS
+                hostname = host_data.hostname() if host_data.hostname() else self._resolve_hostname(host)
+                logger.debug(f"Using DNS hostname for {host}: {hostname}")
 
             # Get MAC address and vendor
             mac = None
@@ -128,6 +139,7 @@ class NetworkScanner:
             info = {
                 'ip': host,
                 'hostname': hostname,
+                'agent_detected': agent_hostname is not None,  # NEW: flag if agent found
                 'mac': mac,
                 'vendor': vendor,
                 'state': state,
@@ -145,12 +157,60 @@ class NetworkScanner:
             return None
 
     def _resolve_hostname(self, ip: str) -> str:
-        """Resolve IP to hostname"""
+        """Resolve IP to hostname via DNS"""
         try:
             hostname = socket.gethostbyaddr(ip)[0]
             return hostname
         except (socket.herror, socket.gaierror):
             return ip
+
+    def _get_agent_hostname(self, ip: str) -> Optional[str]:
+        """Get actual hostname from Zabbix agent
+
+        CRITICAL: This queries the agent directly to get its configured hostname!
+        This ensures hostname in Zabbix matches what the agent sends.
+
+        Zabbix agent protocol:
+        - Connect to port 10050
+        - Send: "agent.hostname\n"
+        - Receive: "HOSTNAME\n"
+
+        Args:
+            ip: IP address to query
+
+        Returns:
+            Agent's configured hostname or None if agent not reachable
+        """
+        try:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.settimeout(2)  # Short timeout (2 seconds)
+            sock.connect((ip, 10050))
+
+            # Request hostname from agent
+            request = b"agent.hostname\n"
+            sock.sendall(request)
+
+            # Read response (up to 1KB)
+            response = sock.recv(1024).decode('utf-8').strip()
+            sock.close()
+
+            # Check if valid response
+            if response and response not in ['ZBX_NOTSUPPORTED', 'ZBX_ERROR']:
+                logger.info(f"✓ Agent at {ip} reports hostname: {response}")
+                return response
+            else:
+                logger.debug(f"Agent at {ip}: doesn't support agent.hostname (response: {response})")
+                return None
+
+        except socket.timeout:
+            logger.debug(f"Agent at {ip}: timeout (agent may not be installed)")
+            return None
+        except ConnectionRefusedError:
+            logger.debug(f"Agent at {ip}: connection refused (port 10050 closed)")
+            return None
+        except Exception as e:
+            logger.debug(f"Agent at {ip}: error querying - {e}")
+            return None
 
     def _guess_device_type(self, hostname: str, vendor: str, ip: str) -> str:
         """Guess device type based on hostname, vendor, and other clues"""
@@ -332,12 +392,21 @@ def main():
     parser.add_argument('--deep', '-d', help='Perform deep scan on specific host')
     parser.add_argument('--config', '-c', default='/opt/plug-monitor/config/config.yml',
                         help='Config file path')
+    parser.add_argument('--test-agent', help='Test agent query on specific IP')
 
     args = parser.parse_args()
 
     scanner = NetworkScanner(config_path=args.config)
 
-    if args.deep:
+    if args.test_agent:
+        # Test agent hostname query
+        print(f"Testing agent on {args.test_agent}...")
+        hostname = scanner._get_agent_hostname(args.test_agent)
+        if hostname:
+            print(f"✓ Agent hostname: {hostname}")
+        else:
+            print("✗ No agent found or agent doesn't support hostname query")
+    elif args.deep:
         # Deep scan single host
         result = scanner.deep_scan(args.deep)
         print(json.dumps(result, indent=2))
@@ -346,7 +415,12 @@ def main():
         results = scanner.scan_network(target=args.target)
         print(f"\nFound {len(results)} hosts:")
         for host in results:
-            print(f"  {host['ip']:15} - {host['hostname']:30} - {host['device_type']}")
+            agent_flag = "✓" if host.get('agent_detected') else " "
+            print(f"  {agent_flag} {host['ip']:15} - {host['hostname']:30} - {host['device_type']}")
+
+        # Count hosts with agents
+        with_agent = sum(1 for h in results if h.get('agent_detected'))
+        print(f"\n✓ Hosts with Zabbix agent: {with_agent}/{len(results)}")
 
 
 if __name__ == '__main__':

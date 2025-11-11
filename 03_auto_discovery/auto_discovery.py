@@ -203,6 +203,15 @@ class ZabbixAPI:
             hostname = host_data['hostname']
             ip = host_data['ip']
 
+            # Network scanner now queries agents directly for their hostname
+            # So we can trust the hostname we receive!
+            agent_detected = host_data.get('agent_detected', False)
+
+            if agent_detected:
+                logger.info(f"Host {hostname} has Zabbix agent - using agent's hostname")
+            else:
+                logger.info(f"Host {hostname} has no agent - using DNS name")
+
             # Check if already exists
             existing = self.host_exists(hostname)
             if existing:
@@ -213,7 +222,7 @@ class ZabbixAPI:
                             'success': False,
                             'error': f'Failed to delete existing host {hostname}'
                         }
-                    time.sleep(1)  # Wait a bit before recreating
+                    time.sleep(1)
                 else:
                     logger.info(f"Host already exists: {hostname} ({ip})")
                     return {
@@ -248,9 +257,8 @@ class ZabbixAPI:
             # CRITICAL: Zabbix 7.0 requires proxyid as INTEGER, not string!
             if proxy_id and proxy_id != '0':
                 try:
-                    # Convert to integer
                     params['proxyid'] = int(proxy_id)
-                    logger.info(f"Adding host {hostname} with proxy ID: {proxy_id} (int: {int(proxy_id)})")
+                    logger.info(f"Adding host {hostname} with proxy ID: {int(proxy_id)}")
                 except (ValueError, TypeError) as e:
                     logger.error(f"Invalid proxy ID format: {proxy_id}, error: {e}")
                     return {
@@ -273,7 +281,8 @@ class ZabbixAPI:
                 'type': host_data.get('device_type', 'unknown'),
                 'os': host_data.get('os_guess', 'Unknown'),
                 'vendor': host_data.get('vendor', ''),
-                'macaddress_a': host_data.get('mac', '')
+                'macaddress_a': host_data.get('mac', ''),
+                'notes': f"Agent detected: {agent_detected}"
             }
 
             # Create host
