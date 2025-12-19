@@ -120,7 +120,6 @@ show_banner() {
 ║                Automated Zabbix Monitoring               ║
 ╚══════════════════════════════════════════════════════════╝
 EOF
-    echo -e "${CYAN}Professional Edition - Quality Assured${NC}"
     echo ""
 }
 
@@ -162,8 +161,8 @@ collect_config() {
     fi
 
     # Proxy name
-    read -p "Proxy name [KGGR-Proxy-$(hostname)]: " PROXY_NAME
-    PROXY_NAME=${PROXY_NAME:-KGGR-Proxy-$(hostname)}
+    read -p "Proxy name [Proxy-$(hostname)]: " PROXY_NAME
+    PROXY_NAME=${PROXY_NAME:-Proxy-$(hostname)}
 
     # Network range
     default_network=$(ip route | grep default | awk '{print $3}' | cut -d'.' -f1-3)
