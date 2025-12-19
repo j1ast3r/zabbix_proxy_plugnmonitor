@@ -1,7 +1,7 @@
 #!/bin/bash
 #================================================================
-# Plug & Monitor - Professional Master Installation Script
-# Version: 2.0.1 for KGGR - TEMPLATE NAMES FIXED!
+# Plug & Monitor
+# Version: 2.0.1  - TEMPLATE NAMES FIXED!
 # All bugs fixed + Quality checks + Auto-scan enabled
 #================================================================
 
@@ -116,8 +116,8 @@ show_banner() {
     clear
     cat << "EOF"
 ╔══════════════════════════════════════════════════════════╗
-║     PLUG & MONITOR - Professional Installation v2.0     ║
-║          Automated Zabbix Monitoring for KGGR           ║
+║                      PLUG & MONITOR                      ║
+║                Automated Zabbix Monitoring               ║
 ╚══════════════════════════════════════════════════════════╝
 EOF
     echo -e "${CYAN}Professional Edition - Quality Assured${NC}"
@@ -750,8 +750,8 @@ show_summary() {
     clear
     echo ""
     echo -e "${GREEN}╔══════════════════════════════════════════════════════════╗${NC}"
-    echo -e "${GREEN}║  Installation Completed Successfully! 🎉                ║${NC}"
-    echo -e "${GREEN}║  Plug & Monitor v${VERSION} - Professional Edition        ║${NC}"
+    echo -e "${GREEN}║  Installation Completed Successfully!                    ║${NC}"
+    echo -e "${GREEN}║  Plug & Monitor v${VERSION}                              ║${NC}"
     echo -e "${GREEN}╚══════════════════════════════════════════════════════════╝${NC}"
     echo ""
 
